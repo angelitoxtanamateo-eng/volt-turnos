@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, Outlet, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, CalendarDays, Users, Store, CreditCard, ShieldCheck, LogOut, Menu, X, ExternalLink, Plus, ChevronDown, Scissors, Contact, Wallet,
+  LayoutDashboard, CalendarDays, Users, Store, CreditCard, ShieldCheck, LogOut, Menu, X, ExternalLink, Plus, ChevronDown, Scissors, Contact, Wallet, UserRound,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useBusiness } from '../context/BusinessContext'
@@ -12,11 +12,12 @@ type NavItem = { to: string; label: string; icon: ReactNode; soon?: boolean; man
 
 const NAV: NavItem[] = [
   { to: '/panel', label: 'Inicio', icon: <LayoutDashboard className="h-[18px] w-[18px]" /> },
-  { to: '/panel/agenda', label: 'Agenda', icon: <CalendarDays className="h-[18px] w-[18px]" />, soon: true },
-  { to: '/panel/servicios', label: 'Servicios', icon: <Scissors className="h-[18px] w-[18px]" />, soon: true },
-  { to: '/panel/clientes', label: 'Clientes', icon: <Contact className="h-[18px] w-[18px]" />, soon: true },
-  { to: '/panel/caja', label: 'Caja', icon: <Wallet className="h-[18px] w-[18px]" />, soon: true },
-  { to: '/panel/equipo', label: 'Equipo', icon: <Users className="h-[18px] w-[18px]" /> },
+  { to: '/panel/agenda', label: 'Agenda', icon: <CalendarDays className="h-[18px] w-[18px]" /> },
+  { to: '/panel/clientes', label: 'Clientes', icon: <Contact className="h-[18px] w-[18px]" /> },
+  { to: '/panel/caja', label: 'Caja', icon: <Wallet className="h-[18px] w-[18px]" />, manage: true },
+  { to: '/panel/servicios', label: 'Servicios', icon: <Scissors className="h-[18px] w-[18px]" />, manage: true },
+  { to: '/panel/profesionales', label: 'Profesionales', icon: <UserRound className="h-[18px] w-[18px]" />, manage: true },
+  { to: '/panel/equipo', label: 'Equipo y accesos', icon: <Users className="h-[18px] w-[18px]" /> },
   { to: '/panel/negocio', label: 'Mi negocio', icon: <Store className="h-[18px] w-[18px]" />, manage: true },
   { to: '/panel/plan', label: 'Plan', icon: <CreditCard className="h-[18px] w-[18px]" />, manage: true },
 ]

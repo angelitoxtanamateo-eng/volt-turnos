@@ -65,10 +65,11 @@ src/pages/             landing, crear negocio, invitación, página pública /:s
 ## Etapas
 
 1. ✅ Autenticación, base de datos, multiempresa, roles, RLS
-2. ⏳ Onboarding completo, personalización (logo, portada, colores, plantillas, vista previa), páginas públicas
-3. ⏳ Turnero y calendario (anti-solapamiento en base de datos)
-4. ⏳ Profesionales, clientes y CRM
-5. ⏳ Caja y reportes
+2. 🟡 Página pública con reservas ✅ — falta: subir logo/portada, editor de colores con vista previa
+3. ✅ Turnero público (servicios → profesional → día/hora → datos), cancelar/reprogramar por link,
+   agenda día/semana/mes, bloqueos, anti-solapamiento en base de datos (exclusion constraint)
+4. ✅ Servicios, profesionales con horarios y descansos, CRM (historial, frecuentes, inactivos, notas, CSV)
+5. ✅ Caja: cobro al completar, medios de pago, gastos, ganancia, comisiones (Business), reporte CSV
 6. ⏳ Planes y suscripciones con Mercado Pago (webhooks en Edge Functions)
 7. ⏳ Panel superadmin completo
 8. ⏳ Notificaciones (WhatsApp Cloud API) y lista de espera

@@ -50,6 +50,11 @@ export interface Business {
   is_published: boolean
   created_by: string | null
   created_at: string
+  slot_interval_min: number
+  min_notice_min: number
+  max_days_ahead: number
+  cancel_limit_hours: number
+  booking_enabled: boolean
 }
 
 export interface Membership {
@@ -100,10 +105,102 @@ export const fmtDate = (d: string | null) =>
 export function slugify(s: string): string {
   return s
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .replace(/-{2,}/g, '-')
     .slice(0, 50)
 }
+
+export interface Service {
+  id: string
+  business_id: string
+  name: string
+  description: string | null
+  duration_min: number
+  price_ars: number
+  is_active: boolean
+  sort_order: number
+}
+
+export interface Professional {
+  id: string
+  business_id: string
+  user_id: string | null
+  name: string
+  specialty: string | null
+  photo_url: string | null
+  phone: string | null
+  commission_pct: number
+  is_active: boolean
+  sort_order: number
+}
+
+export interface WorkingHour {
+  id?: string
+  weekday: number
+  start_time: string
+  end_time: string
+}
+
+export type ApptStatus = 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+export const APPT_STATUS: Record<ApptStatus, { label: string; cls: string; dot: string }> = {
+  confirmed: { label: 'Confirmado', cls: 'bg-volt-violet/15 text-volt-violet2', dot: 'bg-volt-violet' },
+  completed: { label: 'Completado', cls: 'bg-volt-green/15 text-volt-green', dot: 'bg-volt-green' },
+  cancelled: { label: 'Cancelado', cls: 'bg-white/5 text-volt-muted line-through', dot: 'bg-volt-muted' },
+  no_show: { label: 'Ausente', cls: 'bg-volt-amber/15 text-volt-amber', dot: 'bg-volt-amber' },
+}
+
+export interface Appointment {
+  id: string
+  business_id: string
+  professional_id: string
+  client_id: string
+  starts_at: string
+  ends_at: string
+  status: ApptStatus
+  source: 'online' | 'manual'
+  total_price: number
+  notes: string | null
+  manage_token: string
+  cancelled_by: 'client' | 'business' | null
+  clients: { id: string; name: string; phone: string | null } | null
+  appointment_services: { service_id: string | null; name: string; duration_min: number; price_ars: number; position: number }[]
+}
+
+export interface TimeOff {
+  id: string
+  professional_id: string | null
+  starts_at: string
+  ends_at: string
+  reason: string | null
+}
+
+export interface ClientRow {
+  id: string
+  business_id: string
+  name: string
+  phone: string | null
+  email: string | null
+  notes: string | null
+  created_at: string
+  visits: number
+  no_shows: number
+  last_visit: string | null
+  next_visit: string | null
+  total_spent: number
+}
+
+export type PayMethod = 'cash' | 'transfer' | 'mercadopago' | 'card' | 'other'
+export const PAY_METHODS: Record<PayMethod, string> = {
+  cash: 'Efectivo', transfer: 'Transferencia', mercadopago: 'Mercado Pago', card: 'Tarjeta', other: 'Otro',
+}
+
+export const EXPENSE_CATEGORIES: Record<string, string> = {
+  productos: 'Productos', alquiler: 'Alquiler', servicios: 'Luz, agua, internet', sueldos: 'Sueldos',
+  publicidad: 'Publicidad', impuestos: 'Impuestos', otros: 'Otros',
+}
+
+export const servicesLabel = (a: { appointment_services: { name: string; position: number }[] }) =>
+  [...(a.appointment_services ?? [])].sort((x, y) => x.position - y.position).map((s) => s.name).join(' + ')
