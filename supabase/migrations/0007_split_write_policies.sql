@@ -1,0 +1,22 @@
+-- Rendimiento: políticas de escritura separadas (evita evaluar dos políticas en cada SELECT) e índice faltante
+create index if not exists idx_time_off_business_prof on public.time_off(business_id, professional_id);
+drop policy services_write on public.services;
+create policy services_insert on public.services for insert to authenticated with check (public.has_business_role(business_id, array['owner','admin']));
+create policy services_update on public.services for update to authenticated using (public.has_business_role(business_id, array['owner','admin'])) with check (public.has_business_role(business_id, array['owner','admin']));
+create policy services_delete on public.services for delete to authenticated using (public.has_business_role(business_id, array['owner','admin']));
+drop policy professionals_write on public.professionals;
+create policy professionals_insert on public.professionals for insert to authenticated with check (public.has_business_role(business_id, array['owner','admin']));
+create policy professionals_update on public.professionals for update to authenticated using (public.has_business_role(business_id, array['owner','admin'])) with check (public.has_business_role(business_id, array['owner','admin']));
+create policy professionals_delete on public.professionals for delete to authenticated using (public.has_business_role(business_id, array['owner','admin']));
+drop policy prof_services_write on public.professional_services;
+create policy professional_services_insert on public.professional_services for insert to authenticated with check (public.has_business_role(business_id, array['owner','admin']));
+create policy professional_services_update on public.professional_services for update to authenticated using (public.has_business_role(business_id, array['owner','admin'])) with check (public.has_business_role(business_id, array['owner','admin']));
+create policy professional_services_delete on public.professional_services for delete to authenticated using (public.has_business_role(business_id, array['owner','admin']));
+drop policy working_hours_write on public.working_hours;
+create policy working_hours_insert on public.working_hours for insert to authenticated with check (public.has_business_role(business_id, array['owner','admin']));
+create policy working_hours_update on public.working_hours for update to authenticated using (public.has_business_role(business_id, array['owner','admin'])) with check (public.has_business_role(business_id, array['owner','admin']));
+create policy working_hours_delete on public.working_hours for delete to authenticated using (public.has_business_role(business_id, array['owner','admin']));
+drop policy expenses_write on public.expenses;
+create policy expenses_insert on public.expenses for insert to authenticated with check (public.has_business_role(business_id, array['owner','admin']));
+create policy expenses_update on public.expenses for update to authenticated using (public.has_business_role(business_id, array['owner','admin'])) with check (public.has_business_role(business_id, array['owner','admin']));
+create policy expenses_delete on public.expenses for delete to authenticated using (public.has_business_role(business_id, array['owner','admin']));
