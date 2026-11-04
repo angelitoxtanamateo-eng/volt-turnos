@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, Outlet, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, CalendarDays, Users, Store, CreditCard, ShieldCheck, LogOut, Menu, X, ExternalLink, Plus, ChevronDown, Scissors, Contact, Wallet, UserRound,
+  LayoutDashboard, CalendarDays, Users, Store, CreditCard, ShieldCheck, LogOut, Menu, X, ExternalLink, Plus, ChevronDown, Scissors, Contact, Wallet, UserRound, Palette,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useBusiness } from '../context/BusinessContext'
 import { Logo } from './ui'
+import BookingToasts from './BookingToasts'
 import { ROLE_LABEL, SUB_STATUS, fmtDate } from '../lib/types'
 
 type NavItem = { to: string; label: string; icon: ReactNode; soon?: boolean; manage?: boolean }
@@ -18,6 +19,7 @@ const NAV: NavItem[] = [
   { to: '/panel/servicios', label: 'Servicios', icon: <Scissors className="h-[18px] w-[18px]" />, manage: true },
   { to: '/panel/profesionales', label: 'Profesionales', icon: <UserRound className="h-[18px] w-[18px]" />, manage: true },
   { to: '/panel/equipo', label: 'Equipo y accesos', icon: <Users className="h-[18px] w-[18px]" /> },
+  { to: '/panel/diseno', label: 'Diseño de mi página', icon: <Palette className="h-[18px] w-[18px]" />, manage: true },
   { to: '/panel/negocio', label: 'Mi negocio', icon: <Store className="h-[18px] w-[18px]" />, manage: true },
   { to: '/panel/plan', label: 'Plan', icon: <CreditCard className="h-[18px] w-[18px]" />, manage: true },
 ]
@@ -162,6 +164,7 @@ export default function PanelLayout() {
         </div>
       )}
 
+      <BookingToasts businessId={b.id} tz={b.timezone} />
       <main className="flex-1 min-w-0">
         {b.status === 'suspended' && (
           <div className="bg-volt-red/15 px-4 py-2.5 text-center text-sm text-red-300">

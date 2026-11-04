@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarCheck, CalendarClock, Users, Wallet, Check, Circle, Copy, Share2, ArrowRight, UserX, Gauge, TrendingUp } from 'lucide-react'
+import { CalendarCheck, CalendarClock, Users, Wallet, Check, Circle, Copy, Share2, ArrowRight, UserX, Gauge, TrendingUp, Globe, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useBusiness } from '../../context/BusinessContext'
 import { supabase } from '../../lib/supabase'
@@ -24,14 +24,24 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [setup, setSetup] = useState<{ services: number; pros: number; hours: number } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [online, setOnline] = useState<{ id: string; starts_at: string; created_at: string; status: string; clients: { name: string } | null }[] | null>(null)
 
   useEffect(() => {
-    supabase.rpc('dashboard_stats', { p_business: b.id }).then(({ data }) => setStats(data as Stats))
+    const loadLive = () => {
+      supabase.rpc('dashboard_stats', { p_business: b.id }).then(({ data }) => setStats(data as Stats))
+      supabase.from('appointments').select('id, starts_at, created_at, status, clients(name)').eq('business_id', b.id).eq('source', 'online')
+        .order('created_at', { ascending: false }).limit(5).then(({ data }) => setOnline((data ?? []) as unknown as typeof online))
+    }
+    loadLive()
+    const ch = supabase.channel(`dash-${b.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `business_id=eq.${b.id}` }, () => loadLive())
+      .subscribe()
     Promise.all([
       supabase.from('services').select('id', { count: 'exact', head: true }).eq('business_id', b.id).eq('is_active', true),
       supabase.from('professionals').select('id', { count: 'exact', head: true }).eq('business_id', b.id).eq('is_active', true),
       supabase.from('working_hours').select('id', { count: 'exact', head: true }).eq('business_id', b.id),
     ]).then(([s, p, h]) => setSetup({ services: s.count ?? 0, pros: p.count ?? 0, hours: h.count ?? 0 }))
+    return () => { supabase.removeChannel(ch) }
   }, [b.id])
 
   const url = publicUrl(b.slug)
@@ -125,6 +135,30 @@ export default function Dashboard() {
             </section>
           )}
 
+          <section className="card">
+            <div className="flex items-center justify-between border-b border-volt-line px-5 py-4">
+              <h2 className="flex items-center gap-2 font-semibold"><Globe className="h-4 w-4 text-volt-violet2" /> Reservas online</h2>
+              <span className="flex items-center gap-1.5 text-xs text-volt-green"><span className="h-2 w-2 animate-pulse rounded-full bg-volt-green" /> En vivo</span>
+            </div>
+            {!online ? <div className="px-5 py-4 text-sm text-volt-muted">Cargando…</div> : online.length === 0 ? (
+              <div className="px-5 py-4 text-sm text-volt-muted">
+                Todavía nadie reservó solo. Compartí tu link: cuando un cliente saque turno, aparece acá y en la agenda sin que cargues nada.
+              </div>
+            ) : (
+              <ul className="divide-y divide-volt-line">
+                {online.map((o) => (
+                  <li key={o.id} className="flex items-center gap-3 px-5 py-3 text-sm">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${o.status === 'cancelled' ? 'bg-volt-muted' : 'bg-volt-green'}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className={`truncate font-medium ${o.status === 'cancelled' ? 'line-through text-volt-muted' : ''}`}>{o.clients?.name}</div>
+                      <div className="text-xs text-volt-muted">Para el {shortDate(ymdInTz(o.starts_at, tz))} a las {hmInTz(o.starts_at, tz)}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <section className="card p-5">
             <h2 className="font-semibold">Tu link de reservas</h2>
             <p className="mt-1 text-sm text-volt-muted">{b.is_published ? 'Compartilo en Instagram y WhatsApp.' : 'Todavía no está publicado: solo vos y tu equipo lo ven.'}</p>
@@ -135,6 +169,7 @@ export default function Dashboard() {
               </button>
               <a className="btn-ghost" href={waLink(`¡Reservá tu turno en ${b.name}! 👉 ${url}`)} target="_blank" rel="noreferrer"><Share2 className="h-4 w-4" /> WhatsApp</a>
             </div>
+            <a className="btn-primary mt-2 w-full" href={url} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" /> Probar como cliente</a>
           </section>
 
           {stats && stats.top_services.length > 0 && (

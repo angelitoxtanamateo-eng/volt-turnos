@@ -55,6 +55,7 @@ export interface Business {
   max_days_ahead: number
   cancel_limit_hours: number
   booking_enabled: boolean
+  gallery: string[]
 }
 
 export interface Membership {

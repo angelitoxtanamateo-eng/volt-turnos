@@ -15,7 +15,7 @@ interface Biz {
   id: string; slug: string; name: string; description: string | null; logo_url: string | null; cover_url: string | null
   primary_color: string; secondary_color: string; background_color: string; socials: Record<string, string>
   whatsapp: string | null; address: string | null; city: string | null; timezone: string; is_published: boolean
-  max_days_ahead: number; cancel_limit_hours: number; accepting: boolean
+  max_days_ahead: number; cancel_limit_hours: number; accepting: boolean; gallery?: string[]
 }
 interface Svc { id: string; name: string; description: string | null; duration_min: number; price_ars: number }
 interface Pro { id: string; name: string; specialty: string | null; photo_url: string | null; service_ids: string[] }
@@ -169,6 +169,15 @@ export default function PublicBusiness() {
         {step === 'servicios' && (
           <>
             {biz.description && <p className="mt-4 whitespace-pre-line leading-relaxed" style={{ color: t.muted }}>{biz.description}</p>}
+            {(biz.gallery?.length ?? 0) > 0 && (
+              <div className="-mx-4 mt-5 flex snap-x gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+                {biz.gallery!.map((u) => (
+                  <a key={u} href={u} target="_blank" rel="noreferrer" className="shrink-0 snap-start">
+                    <img src={u} alt="" loading="lazy" className="h-32 w-32 rounded-2xl object-cover sm:h-40 sm:w-40" />
+                  </a>
+                ))}
+              </div>
+            )}
             {!biz.accepting ? (
               <div className="mt-6 rounded-2xl border p-5 text-center" style={cardStyle}>
                 <p className="font-semibold">Por ahora no estamos tomando reservas online.</p>

@@ -19,6 +19,7 @@ import Professionals from './pages/panel/Professionals'
 import Agenda from './pages/panel/agenda/Agenda'
 import Clients from './pages/panel/Clients'
 import Cash from './pages/panel/Cash'
+import Branding from './pages/panel/Branding'
 import ManageBooking from './pages/ManageBooking'
 import SuperAdmin from './pages/admin/SuperAdmin'
 import PublicBusiness from './pages/PublicBusiness'
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="servicios" element={<ManagersOnly><Services /></ManagersOnly>} />
         <Route path="profesionales" element={<ManagersOnly><Professionals /></ManagersOnly>} />
         <Route path="equipo" element={<Team />} />
+        <Route path="diseno" element={<ManagersOnly><Branding /></ManagersOnly>} />
         <Route path="negocio" element={<ManagersOnly><BusinessSettings /></ManagersOnly>} />
         <Route path="plan" element={<ManagersOnly><PlanPage /></ManagersOnly>} />
         <Route path="*" element={<Navigate to="/panel" replace />} />

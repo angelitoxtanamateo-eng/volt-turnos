@@ -113,7 +113,7 @@ export default function BusinessSettings() {
           <div className="card p-5">
             <div className="text-sm text-volt-muted">Tu dirección</div>
             <div className="mt-1 break-all font-mono text-sm text-volt-violet2">{publicUrl(b.slug).replace(/^https?:\/\//, '')}</div>
-            <p className="mt-3 text-xs text-volt-muted">Logo, portada, colores y plantillas se personalizan en la próxima etapa.</p>
+            <p className="mt-3 text-xs text-volt-muted">Logo, portada, colores y fotos: en <a href="/panel/diseno" className="font-semibold text-volt-violet2">Diseño de mi página</a>.</p>
           </div>
         </aside>
       </div>
