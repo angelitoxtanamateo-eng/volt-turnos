@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useBusiness } from '../../context/BusinessContext'
 import { supabase } from '../../lib/supabase'
 import { PageHeader, StatCard } from '../../components/ui'
+import InstallApp from '../../components/InstallApp'
 import { copyText, publicUrl, waLink } from '../../lib/share'
 import { ars } from '../../lib/types'
 import { hmInTz, shortDate, todayInTz, ymdInTz } from '../../lib/time'
@@ -60,6 +61,8 @@ export default function Dashboard() {
     <div>
       <PageHeader title={`Hola${hello ? `, ${hello}` : ''} 👋`} subtitle={`Esto es lo que pasa hoy en ${b.name}`}
         action={<Link to="/panel/agenda" className="btn-primary py-2.5 text-sm"><CalendarCheck className="h-4 w-4" /> Ver agenda</Link>} />
+
+      <div className="mb-4 lg:hidden"><InstallApp variant="card" /></div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Turnos hoy" value={stats?.today ?? '…'} icon={<CalendarCheck className="h-4 w-4" />} />

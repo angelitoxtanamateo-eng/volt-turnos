@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { CalendarCheck, Palette, Users, Wallet, MessageCircle, ShieldCheck, ArrowRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Logo } from '../components/ui'
+import InstallApp from '../components/InstallApp'
 
 const FEATURES = [
   { icon: <CalendarCheck className="h-5 w-5" />, title: 'Turnos 24/7', text: 'Tus clientes reservan solos desde tu link, sin choques de horario.' },
@@ -37,6 +38,7 @@ export default function Landing() {
             Crear mi negocio gratis <ArrowRight className="h-4 w-4" />
           </Link>
           <span className="text-sm text-volt-muted">14 días gratis · sin tarjeta</span>
+          <InstallApp variant="button" />
         </div>
       </section>
 

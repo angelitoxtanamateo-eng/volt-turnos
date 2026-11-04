@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { useBusiness } from '../context/BusinessContext'
 import { Logo } from './ui'
 import BookingToasts from './BookingToasts'
+import InstallApp from './InstallApp'
 import { ROLE_LABEL, SUB_STATUS, fmtDate } from '../lib/types'
 
 type NavItem = { to: string; label: string; icon: ReactNode; soon?: boolean; manage?: boolean }
@@ -103,6 +104,8 @@ export default function PanelLayout() {
         >
           <ExternalLink className="h-[18px] w-[18px]" /> Ver mi página
         </a>
+
+        <InstallApp />
 
         {isPlatformAdmin && (
           <NavLink
