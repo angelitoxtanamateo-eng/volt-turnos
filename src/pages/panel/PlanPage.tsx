@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, X, ExternalLink, Clock, CheckCircle2, XCircle, Copy } from 'lucide-react'
+import { Check, X, ExternalLink, Clock, CheckCircle2, XCircle, Copy, RefreshCw, Zap } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import { useBusiness } from '../../context/BusinessContext'
 import { supabase, errorMessage } from '../../lib/supabase'
 import { Alert, Field, PageHeader, Spinner } from '../../components/ui'
@@ -29,6 +30,10 @@ export default function PlanPage() {
   const [history, setHistory] = useState<SubPayment[]>([])
   const [link, setLink] = useState<string | null>(null)
   const [paying, setPaying] = useState<Plan | null>(null)
+  const [auto, setAuto] = useState<Plan | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const returned = new URLSearchParams(window.location.search).get('mp') === 'ok'
 
   const load = useCallback(async () => {
     const [p, h, l] = await Promise.all([
@@ -42,6 +47,24 @@ export default function PlanPage() {
     setLink((l.data as string) ?? null)
   }, [b.id])
   useEffect(() => { load() }, [load])
+
+  // Al volver de Mercado Pago, esperamos la confirmación del webhook unos segundos
+  useEffect(() => {
+    if (!returned) return
+    let n = 0
+    const iv = setInterval(() => { n++; reloadPlan(); load(); if (n >= 10) clearInterval(iv) }, 3000)
+    return () => clearInterval(iv)
+  }, [returned, reloadPlan, load])
+
+  async function cancelAuto() {
+    if (!confirm('¿Cancelar el débito automático? Tu plan sigue activo hasta la fecha ya pagada.')) return
+    setCancelling(true); setMsg(null)
+    const { data, error } = await supabase.functions.invoke('mp-cancel', { body: { business_id: b.id } })
+    setCancelling(false)
+    if (error || data?.error) return setMsg({ kind: 'error', text: data?.error ?? 'No se pudo cancelar. Probá de nuevo.' })
+    setMsg({ kind: 'success', text: 'Débito automático cancelado.' })
+    reloadPlan()
+  }
 
   const pending = history.find((h) => h.status === 'pending')
   const lastRejected = history[0]?.status === 'rejected' ? history[0] : null
@@ -68,6 +91,26 @@ export default function PlanPage() {
           </div>
         </div>
       )}
+
+      {msg && <div className="mb-4"><Alert kind={msg.kind}>{msg.text}</Alert></div>}
+
+      {plan?.mp_status === 'authorized' ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-volt-green/30 bg-volt-green/10 p-4 text-sm">
+          <RefreshCw className="h-5 w-5 shrink-0 text-volt-green" />
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-green-300">Débito automático activo</div>
+            <div className="text-volt-muted">Se cobra solo cada mes con Mercado Pago y tu plan se renueva automáticamente. No tenés que hacer nada.</div>
+          </div>
+          <button className="btn-ghost py-2 text-sm" onClick={cancelAuto} disabled={cancelling}>{cancelling ? <Spinner /> : 'Cancelar débito'}</button>
+        </div>
+      ) : returned && plan?.mp_status === 'pending' ? (
+        <div className="mb-4 flex items-center gap-3 rounded-2xl border border-volt-violet/30 bg-volt-violet/10 p-4 text-sm">
+          <Spinner className="h-5 w-5 text-volt-violet2" />
+          <div><div className="font-semibold">Confirmando con Mercado Pago…</div><div className="text-volt-muted">Apenas se apruebe, tu plan se activa solo.</div></div>
+        </div>
+      ) : plan?.cancel_at_period_end && plan.mp_status === 'cancelled' ? (
+        <div className="mb-4"><Alert>El débito automático está cancelado. Tu plan sigue hasta el {fmtDate(plan.current_period_end)}.</Alert></div>
+      ) : null}
 
       {pending && (
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-volt-amber/30 bg-volt-amber/10 p-4 text-sm">
@@ -103,8 +146,15 @@ export default function PlanPage() {
                     </li>
                   ))}
                 </ul>
-                <button className={`${isCurrent ? 'btn-ghost' : 'btn-primary'} mt-5 w-full`} disabled={!!pending || !link} onClick={() => setPaying(p)}>
-                  {isCurrent ? 'Renovar' : `Pagar ${p.name}`}
+                {plan?.mp_status === 'authorized' && plan.mp_plan_code === p.code ? (
+                  <div className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-volt-green/30 bg-volt-green/10 py-3 text-sm font-semibold text-volt-green"><RefreshCw className="h-4 w-4" /> Débito activo</div>
+                ) : (
+                  <button className="btn-primary mt-5 w-full" onClick={() => { setMsg(null); setAuto(p) }}>
+                    <Zap className="h-4 w-4" /> {plan?.mp_status === 'authorized' ? `Cambiar a ${p.name}` : `Suscribirme a ${p.name}`}
+                  </button>
+                )}
+                <button className="mt-2 text-xs text-volt-muted underline disabled:no-underline disabled:opacity-50" disabled={!!pending || !link} onClick={() => setPaying(p)}>
+                  {isCurrent ? 'Renovar pagando una vez con link' : 'Prefiero pagar una vez con link'}
                 </button>
               </div>
             )
@@ -130,6 +180,7 @@ export default function PlanPage() {
         </section>
       )}
 
+      <AutoModal plan={auto} businessId={b.id} onClose={() => setAuto(null)} inTrial={plan?.status === 'trialing' && plan.is_usable ? plan.trial_ends_at : null} />
       <PayModal plan={paying} link={link} businessId={b.id} businessName={b.name} onClose={() => setPaying(null)} onSent={() => { load(); reloadPlan() }} />
     </div>
   )
@@ -207,6 +258,51 @@ function PayModal({ plan, link, businessId, businessName, onClose, onSent }: { p
           </li>
         </ol>
         <p className="text-xs text-volt-muted">Verificamos el pago y activamos tu plan por {months} {months === 1 ? 'mes' : 'meses'}. Si todavía te quedan días pagos del mismo plan, se suman.</p>
+      </div>
+    </Modal>
+  )
+}
+
+function AutoModal({ plan, businessId, onClose, inTrial }: { plan: Plan | null; businessId: string; onClose: () => void; inTrial: string | null }) {
+  const { user } = useAuth()
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { if (plan) { setEmail(user?.email ?? ''); setError('') } }, [plan, user])
+  if (!plan) return null
+
+  async function go() {
+    setError('')
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return setError('Ingresá un email válido')
+    setBusy(true)
+    const { data, error } = await supabase.functions.invoke('mp-subscribe', { body: { business_id: businessId, plan_id: plan!.id, payer_email: email.trim() } })
+    if (error || data?.error || !data?.init_point) {
+      setBusy(false)
+      let text = data?.error as string | undefined
+      if (!text && error && 'context' in error) { try { text = (await (error as { context: Response }).context.json()).error } catch { /* sin cuerpo */ } }
+      return setError(text ?? 'No se pudo conectar con Mercado Pago. Probá de nuevo.')
+    }
+    window.location.href = data.init_point
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Suscribirme a ${plan.name}`}
+      footer={<button className="btn-primary w-full bg-[#009EE3] shadow-none hover:bg-[#0089c7]" onClick={go} disabled={busy}>{busy ? <Spinner /> : <><ExternalLink className="h-4 w-4" /> Continuar en Mercado Pago</>}</button>}>
+      <div className="space-y-4 text-sm">
+        {error && <Alert>{error}</Alert>}
+        <div className="rounded-2xl border border-volt-line bg-volt-bg p-4 text-center">
+          <div className="text-volt-muted">Débito automático mensual</div>
+          <div className="mt-1 text-3xl font-extrabold">{ars(Number(plan.price_ars))}<span className="text-sm font-medium text-volt-muted">/mes</span></div>
+          {inTrial && <div className="mt-1 text-xs text-volt-green">El primer cobro es al terminar tu prueba gratis ({fmtDate(inTrial)})</div>}
+        </div>
+        <ul className="space-y-2 text-volt-muted">
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-volt-green" /> Se activa al instante, sin esperar aprobación.</li>
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-volt-green" /> Se cobra solo cada mes con tarjeta o dinero en Mercado Pago.</li>
+          <li className="flex gap-2"><Check className="h-4 w-4 shrink-0 text-volt-green" /> Lo cancelás cuando quieras desde acá.</li>
+        </ul>
+        <Field label="Email de tu cuenta de Mercado Pago" hint="Tiene que ser el mismo con el que vas a pagar.">
+          <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
       </div>
     </Modal>
   )

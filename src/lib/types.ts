@@ -74,6 +74,9 @@ export interface PlanInfo {
   trial_ends_at: string | null
   current_period_end: string | null
   is_usable: boolean
+  cancel_at_period_end?: boolean
+  mp_status?: 'pending' | 'authorized' | 'paused' | 'cancelled' | null
+  mp_plan_code?: string | null
 }
 
 export interface Plan {
