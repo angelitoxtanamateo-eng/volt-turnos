@@ -32,7 +32,7 @@ export default function SuperAdmin() {
   const load = useCallback(async () => {
     const [b, p, s, sp, ml] = await Promise.all([
       supabase.from('businesses')
-        .select('id, slug, name, category, status, is_published, created_at, city, subscriptions(status, trial_ends_at, current_period_end, plans(name, price_ars))')
+        .select('id, slug, name, category, status, is_published, created_at, city, subscriptions(status, trial_ends_at, current_period_end, plans!subscriptions_plan_id_fkey(name, price_ars))')
         .order('created_at', { ascending: false }),
       supabase.from('plans').select('*').order('sort_order'),
       supabase.from('platform_settings').select('value').eq('key', 'trial_days').maybeSingle(),
