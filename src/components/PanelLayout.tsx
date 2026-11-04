@@ -177,9 +177,14 @@ export default function PanelLayout() {
             Te quedan <b>{trialDaysLeft} días</b> (hasta el {fmtDate(plan.trial_ends_at)})
           </div>
         )}
+        {plan && plan.is_usable && plan.status === 'active' && plan.current_period_end && (new Date(plan.current_period_end).getTime() - Date.now()) < 5 * 86400000 && (
+          <div className="bg-volt-amber/10 px-4 py-2 text-center text-sm text-amber-300">
+            Tu plan vence el {fmtDate(plan.current_period_end)}. {can('manage') && <Link to="/panel/plan" className="font-semibold underline">Renovar</Link>}
+          </div>
+        )}
         {plan && !plan.is_usable && (
           <div className="bg-volt-amber/15 px-4 py-2.5 text-center text-sm text-amber-300">
-            Tu suscripción no está activa. {can('manage') && <Link to="/panel/plan" className="underline font-semibold">Ver planes</Link>}
+            Tu suscripción venció: tus clientes no pueden reservar online. {can('manage') && <Link to="/panel/plan" className="underline font-semibold">Pagar ahora</Link>}
           </div>
         )}
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:py-8">

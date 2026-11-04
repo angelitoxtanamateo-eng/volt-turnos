@@ -11,9 +11,17 @@ interface Row {
   subscriptions: { status: PlanInfo['status']; trial_ends_at: string | null; current_period_end: string | null; plans: { name: string; price_ars: number } | null } | null
 }
 
+interface SubPay {
+  id: string; business_id: string; months: number; amount: number; reference: string; payer_note: string | null
+  status: 'pending' | 'approved' | 'rejected'; admin_note: string | null; created_at: string; period_end: string | null
+  plans: { name: string } | null; businesses: { name: string; slug: string } | null
+}
+
 export default function SuperAdmin() {
   const { signOut, memberships } = useAuth()
-  const [tab, setTab] = useState<'negocios' | 'planes' | 'ajustes'>('negocios')
+  const [tab, setTab] = useState<'negocios' | 'pagos' | 'planes' | 'ajustes'>('negocios')
+  const [pays, setPays] = useState<SubPay[]>([])
+  const [mpLink, setMpLink] = useState('')
   const [rows, setRows] = useState<Row[] | null>(null)
   const [plans, setPlans] = useState<Plan[]>([])
   const [trialDays, setTrialDays] = useState('14')
@@ -22,13 +30,18 @@ export default function SuperAdmin() {
   const [ok, setOk] = useState('')
 
   const load = useCallback(async () => {
-    const [b, p, s] = await Promise.all([
+    const [b, p, s, sp, ml] = await Promise.all([
       supabase.from('businesses')
         .select('id, slug, name, category, status, is_published, created_at, city, subscriptions(status, trial_ends_at, current_period_end, plans(name, price_ars))')
         .order('created_at', { ascending: false }),
       supabase.from('plans').select('*').order('sort_order'),
       supabase.from('platform_settings').select('value').eq('key', 'trial_days').maybeSingle(),
+      supabase.from('subscription_payments').select('id, business_id, months, amount, reference, payer_note, status, admin_note, created_at, period_end, plans(name), businesses(name, slug)')
+        .order('created_at', { ascending: false }).limit(100),
+      supabase.from('platform_settings').select('value').eq('key', 'mp_payment_link').maybeSingle(),
     ])
+    setPays((sp.data ?? []) as unknown as SubPay[])
+    if (ml.data) setMpLink(String(ml.data.value))
     if (b.error) setError(errorMessage(b.error))
     setRows((b.data ?? []) as unknown as Row[])
     setPlans((p.data ?? []) as Plan[])
@@ -76,6 +89,29 @@ export default function SuperAdmin() {
     setOk('Período de prueba actualizado (aplica a negocios nuevos)')
   }
 
+  async function review(pay: SubPay, approve: boolean) {
+    setError(''); setOk('')
+    let note: string | null = null
+    if (!approve) {
+      note = prompt('Motivo del rechazo (lo ve el negocio):', 'No encontramos el pago con ese número de operación')
+      if (note === null) return
+    } else if (!confirm(`¿Confirmás que recibiste ${ars(Number(pay.amount))} de ${pay.businesses?.name} (operación ${pay.reference})?`)) return
+    const { error } = await supabase.rpc('review_subscription_payment', { p_id: pay.id, p_approve: approve, p_note: note })
+    if (error) return setError(errorMessage(error))
+    setOk(approve ? `Plan activado para ${pay.businesses?.name}` : 'Pago rechazado')
+    load()
+  }
+
+  async function saveLink() {
+    setError(''); setOk('')
+    if (!/^https:\/\/(link\.)?mercadopago\.com(\.ar)?\//.test(mpLink.trim())) return setError('Pegá un link de Mercado Pago válido (https://link.mercadopago.com.ar/...)')
+    const { error } = await supabase.from('platform_settings').update({ value: mpLink.trim() }).eq('key', 'mp_payment_link')
+    if (error) return setError(errorMessage(error))
+    setOk('Link de cobro actualizado')
+  }
+
+  const pendingPays = pays.filter((x) => x.status === 'pending')
+
   const catLabel = (c: string) => CATEGORIES.find((x) => x.value === c)?.label ?? c
 
   return (
@@ -104,8 +140,11 @@ export default function SuperAdmin() {
         </div>
 
         <div className="mt-6 flex gap-1 rounded-xl border border-volt-line bg-volt-card p-1 text-sm sm:w-fit">
-          {(['negocios', 'planes', 'ajustes'] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`flex-1 rounded-lg px-4 py-2 font-semibold capitalize transition ${tab === t ? 'bg-volt-violet text-white' : 'text-volt-muted hover:text-volt-white'}`}>{t}</button>
+          {(['negocios', 'pagos', 'planes', 'ajustes'] as const).map((t) => (
+            <button key={t} onClick={() => setTab(t)} className={`relative flex-1 rounded-lg px-3 py-2 font-semibold capitalize transition ${tab === t ? 'bg-volt-violet text-white' : 'text-volt-muted hover:text-volt-white'}`}>
+              {t}
+              {t === 'pagos' && pendingPays.length > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-volt-amber px-1 text-[11px] font-bold text-black">{pendingPays.length}</span>}
+            </button>
           ))}
         </div>
 
@@ -157,6 +196,37 @@ export default function SuperAdmin() {
           </section>
         )}
 
+        {tab === 'pagos' && (
+          <section className="mt-4 space-y-2">
+            {pays.length === 0 && <div className="card p-8 text-center text-sm text-volt-muted">Todavía no hay pagos informados.</div>}
+            {pays.map((x) => (
+              <div key={x.id} className={`card flex flex-wrap items-center gap-3 p-4 ${x.status === 'pending' ? 'border-volt-amber/40' : ''}`}>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">{x.businesses?.name}</span>
+                    <span className={`chip ${x.status === 'pending' ? 'bg-volt-amber/15 text-volt-amber' : x.status === 'approved' ? 'bg-volt-green/15 text-volt-green' : 'bg-volt-red/15 text-volt-red'}`}>
+                      {x.status === 'pending' ? 'Por verificar' : x.status === 'approved' ? 'Aprobado' : 'Rechazado'}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-volt-muted">
+                    Plan {x.plans?.name} · {x.months} {x.months === 1 ? 'mes' : 'meses'} · {fmtDate(x.created_at)} · operación <b className="text-volt-white">{x.reference}</b>
+                    {x.period_end && ` · hasta ${fmtDate(x.period_end)}`}
+                  </div>
+                  {x.payer_note && <div className="mt-1 text-xs text-volt-muted">💬 {x.payer_note}</div>}
+                </div>
+                <div className="text-lg font-bold">{ars(Number(x.amount))}</div>
+                {x.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <button className="btn-danger py-2 text-sm" onClick={() => review(x, false)}>Rechazar</button>
+                    <button className="btn-primary bg-volt-green py-2 text-sm hover:bg-green-500" onClick={() => review(x, true)}>Aprobar</button>
+                  </div>
+                )}
+              </div>
+            ))}
+            <p className="pt-2 text-xs text-volt-muted">Antes de aprobar, buscá el número de operación en tu actividad de Mercado Pago y verificá el monto.</p>
+          </section>
+        )}
+
         {tab === 'planes' && (
           <section className="mt-4 grid gap-4 md:grid-cols-3">
             {plans.map((p, i) => (
@@ -188,6 +258,10 @@ export default function SuperAdmin() {
               <input className="input" type="number" min={0} max={90} value={trialDays} onChange={(e) => setTrialDays(e.target.value)} />
             </label>
             <button className="btn-primary w-full" onClick={saveTrial}><Save className="h-4 w-4" /> Guardar</button>
+            <label className="block pt-3"><span className="label">Link de cobro de Mercado Pago</span>
+              <input className="input" value={mpLink} onChange={(e) => setMpLink(e.target.value)} placeholder="https://link.mercadopago.com.ar/..." />
+            </label>
+            <button className="btn-primary w-full" onClick={saveLink}><Save className="h-4 w-4" /> Guardar link</button>
           </section>
         )}
       </div>
