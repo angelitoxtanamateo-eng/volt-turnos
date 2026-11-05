@@ -37,7 +37,7 @@ export default function Landing() {
           <Link to={user ? '/panel' : '/registro'} className="btn-primary px-6 py-3.5 text-base">
             Crear mi negocio gratis <ArrowRight className="h-4 w-4" />
           </Link>
-          <span className="text-sm text-volt-muted">14 días gratis · sin tarjeta</span>
+          <span className="text-sm text-volt-muted">15 días gratis · sin tarjeta</span>
           <InstallApp variant="button" />
         </div>
       </section>

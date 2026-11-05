@@ -52,7 +52,7 @@ export default function Register() {
   return (
     <AuthShell
       title="Creá tu cuenta"
-      subtitle="14 días gratis. Sin tarjeta."
+      subtitle="15 días gratis. Sin tarjeta."
       footer={<>¿Ya tenés cuenta? <Link to={`/ingresar${params.get('next') ? `?next=${encodeURIComponent(params.get('next')!)}` : ''}`} className="font-semibold text-volt-violet2">Ingresá</Link></>}
     >
       <form onSubmit={onSubmit} className="space-y-4">
