@@ -6,26 +6,56 @@ export const ROLE_LABEL: Record<Role, string> = {
   professional: 'Profesional',
 }
 
-export type Category = 'peluqueria' | 'barberia' | 'unas' | 'estetica' | 'spa' | 'otro'
+export type Category =
+  | 'peluqueria' | 'barberia' | 'unas' | 'estetica' | 'spa'
+  | 'gimnasio' | 'gastronomia' | 'consultorio' | 'oficios' | 'clases' | 'otro'
 export const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'peluqueria', label: 'Peluquería' },
   { value: 'barberia', label: 'Barbería' },
   { value: 'unas', label: 'Uñas' },
   { value: 'estetica', label: 'Estética' },
   { value: 'spa', label: 'Spa / Masajes' },
+  { value: 'gimnasio', label: 'Gimnasio / Funcional' },
+  { value: 'gastronomia', label: 'Comidas / Catering' },
+  { value: 'consultorio', label: 'Consultorio' },
+  { value: 'oficios', label: 'Oficios' },
+  { value: 'clases', label: 'Clases / Talleres' },
   { value: 'otro', label: 'Otro' },
 ]
 
-export type Template = 'barberia' | 'peluqueria' | 'nails' | 'estetica' | 'unisex'
+/** Palabras que cambian según el rubro (turno / clase / pedido) */
+export interface Terms {
+  noun: string; nounPl: string; pick: string; pickHint: string; confirmed: string; who: string; whenTitle: string; staff: string; staffPl: string
+}
+const T_TURNO: Terms = {
+  noun: 'turno', nounPl: 'turnos', pick: '¿Qué te querés hacer?', pickHint: 'Podés elegir más de uno.',
+  confirmed: '¡Turno confirmado!', who: '¿Con quién?', whenTitle: 'Elegí día y horario', staff: 'profesional', staffPl: 'profesionales',
+}
+export function termsFor(c: Category | string | undefined): Terms {
+  if (c === 'gimnasio' || c === 'clases') return {
+    ...T_TURNO, noun: 'reserva', nounPl: 'reservas', pick: '¿Qué querés reservar?', pickHint: 'Elegí la clase o actividad.',
+    confirmed: '¡Lugar reservado!', who: '¿Con quién?', staff: 'profe', staffPl: 'profes',
+  }
+  if (c === 'gastronomia') return {
+    ...T_TURNO, noun: 'pedido', nounPl: 'pedidos', pick: '¿Qué querés pedir?', pickHint: 'Elegí el producto y la cantidad.',
+    confirmed: '¡Pedido confirmado!', who: '¿Dónde lo retirás?', whenTitle: '¿Para cuándo lo querés?', staff: 'sucursal', staffPl: 'sucursales',
+  }
+  return T_TURNO
+}
+
+export type Template = 'barberia' | 'peluqueria' | 'nails' | 'estetica' | 'unisex' | 'gym' | 'food'
 export const TEMPLATES: Record<Template, { label: string; primary: string; secondary: string; background: string }> = {
   barberia: { label: 'Barbería Premium', primary: '#C9A227', secondary: '#111111', background: '#1C1C1E' },
   peluqueria: { label: 'Peluquería Elegante', primary: '#E8A0B4', secondary: '#B89B7A', background: '#FFFFFF' },
   nails: { label: 'Nails Studio', primary: '#B39DDB', secondary: '#F8BBD0', background: '#FFFFFF' },
   estetica: { label: 'Centro de Estética', primary: '#6FBF8E', secondary: '#E8F5E9', background: '#FFFFFF' },
   unisex: { label: 'Unisex Moderno', primary: '#8B5CF6', secondary: '#0F172A', background: '#FFFFFF' },
+  gym: { label: 'Gimnasio Energía', primary: '#F97316', secondary: '#111827', background: '#0B0B0F' },
+  food: { label: 'Cocina Casera', primary: '#DC2626', secondary: '#F59E0B', background: '#FFFBF5' },
 }
 export const CATEGORY_TEMPLATE: Record<Category, Template> = {
-  peluqueria: 'peluqueria', barberia: 'barberia', unas: 'nails', estetica: 'estetica', spa: 'estetica', otro: 'unisex',
+  peluqueria: 'peluqueria', barberia: 'barberia', unas: 'nails', estetica: 'estetica', spa: 'estetica',
+  gimnasio: 'gym', gastronomia: 'food', consultorio: 'estetica', oficios: 'unisex', clases: 'unisex', otro: 'unisex',
 }
 
 export interface Business {
@@ -126,6 +156,28 @@ export interface Service {
   price_ars: number
   is_active: boolean
   sort_order: number
+  /** Lugares por horario (1 = turno individual, más = clase grupal) */
+  capacity: number
+  /** Si tiene valor, se vende por unidad ("docena", "unidad", "kg"…) */
+  unit_label: string | null
+  max_qty: number
+}
+
+/** "$ 9.000 / docena" */
+export const priceLabel = (s: { price_ars: number; unit_label?: string | null }) =>
+  s.unit_label ? `${ars(Number(s.price_ars))} / ${s.unit_label}` : ars(Number(s.price_ars))
+/** "20 docenas" */
+export function qtyLabel(q: number, unit: string | null | undefined) {
+  if (!unit) return String(q)
+  if (q === 1) return `1 ${unit}`
+  const u = unit.trim()
+  let pl = u
+  if (/^(kg|g|gr|grs|l|lt|ml|cc|cm|m)\.?$/i.test(u)) pl = u
+  else if (/ión$/i.test(u)) pl = u.replace(/ión$/i, 'iones')
+  else if (/[aeiouáéó]$/i.test(u)) pl = `${u}s`
+  else if (/z$/i.test(u)) pl = `${u.slice(0, -1)}ces`
+  else if (/[a-zñ]$/i.test(u)) pl = `${u}es`
+  return `${q} ${pl}`
 }
 
 export interface Professional {
@@ -169,8 +221,10 @@ export interface Appointment {
   notes: string | null
   manage_token: string
   cancelled_by: 'client' | 'business' | null
+  group_service_id: string | null
+  session_key: string
   clients: { id: string; name: string; phone: string | null } | null
-  appointment_services: { service_id: string | null; name: string; duration_min: number; price_ars: number; position: number }[]
+  appointment_services: { service_id: string | null; name: string; duration_min: number; price_ars: number; position: number; quantity?: number; unit_label?: string | null }[]
 }
 
 export interface TimeOff {
@@ -206,5 +260,6 @@ export const EXPENSE_CATEGORIES: Record<string, string> = {
   publicidad: 'Publicidad', impuestos: 'Impuestos', otros: 'Otros',
 }
 
-export const servicesLabel = (a: { appointment_services: { name: string; position: number }[] }) =>
-  [...(a.appointment_services ?? [])].sort((x, y) => x.position - y.position).map((s) => s.name).join(' + ')
+export const servicesLabel = (a: { appointment_services: { name: string; position: number; quantity?: number; unit_label?: string | null }[] }) =>
+  [...(a.appointment_services ?? [])].sort((x, y) => x.position - y.position)
+    .map((s) => ((s.quantity ?? 1) > 1 || s.unit_label ? `${qtyLabel(s.quantity ?? 1, s.unit_label)} · ${s.name}` : s.name)).join(' + ')

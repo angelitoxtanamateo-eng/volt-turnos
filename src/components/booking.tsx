@@ -48,7 +48,7 @@ export function DateStrip({ from, days, value, onChange, t }: { from: string; da
 }
 
 /** Grilla de horarios agrupada por mañana / tarde / noche */
-export function SlotGrid({ slots, value, onChange, t }: { slots: { t: string; label: string }[]; value: string | null; onChange: (iso: string) => void; t: Theme }) {
+export function SlotGrid({ slots, value, onChange, t }: { slots: { t: string; label: string; sub?: string }[]; value: string | null; onChange: (iso: string) => void; t: Theme }) {
   const groups: [string, (h: number) => boolean][] = [['Mañana', (h) => h < 13], ['Tarde', (h) => h >= 13 && h < 19], ['Noche', (h) => h >= 19]]
   return (
     <div className="space-y-4">
@@ -65,6 +65,7 @@ export function SlotGrid({ slots, value, onChange, t }: { slots: { t: string; la
                   <button key={s.t} onClick={() => onChange(s.t)} className="rounded-xl border py-2.5 text-sm font-semibold transition active:scale-95"
                     style={{ background: active ? t.primary : t.card, color: active ? t.onPrimary : t.fg, borderColor: active ? t.primary : t.line }}>
                     {s.label}
+                    {s.sub && <span className="block text-[10px] font-medium opacity-75">{s.sub}</span>}
                   </button>
                 )
               })}

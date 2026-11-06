@@ -3,7 +3,7 @@ import { Search, UserPlus, Check } from 'lucide-react'
 import { supabase, errorMessage } from '../../../lib/supabase'
 import { Alert, Field, Spinner } from '../../../components/ui'
 import Modal from '../../../components/Modal'
-import { ars, type Professional, type Service } from '../../../lib/types'
+import { ars, qtyLabel, type Professional, type Service } from '../../../lib/types'
 import { fmtDuration, hmInTz, todayInTz, zonedToIso } from '../../../lib/time'
 
 interface Props {
@@ -28,18 +28,19 @@ export default function NewAppointment(p: Props) {
   const [newClient, setNewClient] = useState({ name: '', phone: '' })
   const [mode, setMode] = useState<'search' | 'new'>('search')
   const [svc, setSvc] = useState<string[]>([])
+  const [qty, setQty] = useState(1)
   const [pro, setPro] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [notes, setNotes] = useState('')
-  const [slots, setSlots] = useState<string[] | null>(null)
+  const [slots, setSlots] = useState<{ hm: string; left: number | null }[] | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (!p.open) return
     setClientQuery(''); setHits([]); setClient(null); setNewClient({ name: '', phone: '' }); setMode('search')
-    setSvc([]); setNotes(''); setError('')
+    setSvc([]); setQty(1); setNotes(''); setError('')
     setPro(p.lockedProfessionalId ?? p.defaults?.professionalId ?? '')
     setDate(p.defaults?.date ?? todayInTz(p.tz))
     setTime(p.defaults?.time ?? '')
@@ -67,7 +68,17 @@ export default function NewAppointment(p: Props) {
   useEffect(() => { if (pro && !eligiblePros.some((x) => x.id === pro) && !p.lockedProfessionalId) setPro('') }, [eligiblePros, pro, p.lockedProfessionalId])
 
   const totalMin = svc.reduce((a, id) => a + (p.services.find((s) => s.id === id)?.duration_min ?? 0), 0)
-  const totalPrice = svc.reduce((a, id) => a + Number(p.services.find((s) => s.id === id)?.price_ars ?? 0), 0)
+  const chosen = p.services.filter((s) => svc.includes(s.id))
+  const unitSvc = chosen.length === 1 && chosen[0].unit_label ? chosen[0] : null
+  const groupSvc = chosen.length === 1 && chosen[0].capacity > 1 && !chosen[0].unit_label ? chosen[0] : null
+  const q = unitSvc ? qty : 1
+  const totalPrice = svc.reduce((a, id) => a + Number(p.services.find((s) => s.id === id)?.price_ars ?? 0), 0) * q
+  const special = (s: Service) => s.capacity > 1 || !!s.unit_label
+  function toggle(s: Service) {
+    if (svc.includes(s.id)) return setSvc(svc.filter((x) => x !== s.id))
+    setQty(1)
+    setSvc(special(s) || chosen.some(special) ? [s.id] : [...svc, s.id])
+  }
 
   // Horarios libres sugeridos (según horario laboral)
   useEffect(() => {
@@ -75,7 +86,7 @@ export default function NewAppointment(p: Props) {
     let alive = true
     setSlots(null)
     supabase.rpc('staff_available_slots', { p_business: p.businessId, p_service_ids: svc, p_professional_id: pro, p_date: date, p_exclude: null })
-      .then(({ data }) => { if (alive) setSlots(((data ?? []) as { t: string }[]).map((x) => hmInTz(x.t, p.tz))) })
+      .then(({ data }) => { if (alive) setSlots(((data ?? []) as { t: string; l?: number | null }[]).map((x) => ({ hm: hmInTz(x.t, p.tz), left: x.l ?? null }))) })
     return () => { alive = false }
   }, [p.open, svc, pro, date, p.businessId, p.tz])
 
@@ -96,6 +107,7 @@ export default function NewAppointment(p: Props) {
       p_client_name: mode === 'new' ? newClient.name.trim() : null,
       p_client_phone: mode === 'new' ? newClient.phone.trim() || null : null,
       p_notes: notes.trim() || null,
+      p_quantity: q,
     })
     setBusy(false)
     if (error) return setError(errorMessage(error))
@@ -107,7 +119,7 @@ export default function NewAppointment(p: Props) {
     <Modal open={p.open} onClose={p.onClose} title="Nuevo turno" wide
       footer={
         <div className="flex items-center gap-3">
-          <div className="flex-1 text-sm text-volt-muted">{svc.length > 0 && <>{fmtDuration(totalMin)} · <b className="text-volt-white">{ars(totalPrice)}</b></>}</div>
+          <div className="flex-1 text-sm text-volt-muted">{svc.length > 0 && <>{unitSvc ? qtyLabel(q, unitSvc.unit_label) : fmtDuration(totalMin)} · <b className="text-volt-white">{ars(totalPrice)}</b></>}</div>
           <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? <Spinner /> : 'Agendar turno'}</button>
         </div>
       }>
@@ -165,7 +177,7 @@ export default function NewAppointment(p: Props) {
             {activeServices.map((s) => {
               const on = svc.includes(s.id)
               return (
-                <button type="button" key={s.id} onClick={() => setSvc(on ? svc.filter((x) => x !== s.id) : [...svc, s.id])}
+                <button type="button" key={s.id} onClick={() => toggle(s)}
                   className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm transition ${on ? 'border-volt-violet bg-volt-violet/15' : 'border-volt-line text-volt-muted hover:border-volt-violet/40'}`}>
                   {on && <Check className="h-3.5 w-3.5 text-volt-violet2" />}{s.name} <span className="text-xs opacity-70">{s.duration_min}′</span>
                 </button>
@@ -173,6 +185,15 @@ export default function NewAppointment(p: Props) {
             })}
             {activeServices.length === 0 && <p className="text-sm text-volt-muted">Cargá servicios primero.</p>}
           </div>
+          {unitSvc && (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="text-sm text-volt-muted">Cantidad ({unitSvc.unit_label})</span>
+              <input className="input w-24" inputMode="numeric" value={qty}
+                onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setQty(Math.min(unitSvc.max_qty, Math.max(1, n || 1))) }} />
+              <span className="text-xs text-volt-muted">máx. {unitSvc.max_qty}</span>
+            </div>
+          )}
+          {groupSvc && <p className="mt-2 text-xs text-volt-muted">Clase grupal: hasta {groupSvc.capacity} personas por horario.</p>}
         </section>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -191,9 +212,11 @@ export default function NewAppointment(p: Props) {
             slots === null ? <div className="py-2"><Spinner className="h-4 w-4 text-volt-muted" /></div>
             : slots.length > 0 ? (
               <div className="mb-3 flex flex-wrap gap-2">
-                {slots.map((t) => (
-                  <button key={t} type="button" onClick={() => setTime(t)}
-                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${time === t ? 'border-volt-violet bg-volt-violet text-white' : 'border-volt-line hover:border-volt-violet/40'}`}>{t}</button>
+                {slots.map((x) => (
+                  <button key={x.hm} type="button" onClick={() => setTime(x.hm)}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${time === x.hm ? 'border-volt-violet bg-volt-violet text-white' : 'border-volt-line hover:border-volt-violet/40'}`}>
+                    {x.hm}{groupSvc && x.left != null && <span className="ml-1 text-[11px] opacity-75">({x.left} libres)</span>}
+                  </button>
                 ))}
               </div>
             ) : <p className="mb-2 text-xs text-volt-muted">No hay huecos dentro del horario laboral ese día. Podés cargar una hora a mano.</p>

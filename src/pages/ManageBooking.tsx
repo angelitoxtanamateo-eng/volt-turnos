@@ -5,14 +5,14 @@ import { supabase, errorMessage } from '../lib/supabase'
 import { FullScreenLoader, Logo } from '../components/ui'
 import { DateStrip, SlotGrid, makeTheme } from '../components/booking'
 import { waLink } from '../lib/share'
-import { ars } from '../lib/types'
+import { ars, qtyLabel, termsFor } from '../lib/types'
 import { hmInTz, longDate, todayInTz, ymdInTz } from '../lib/time'
 
 interface Booking {
   token: string; starts_at: string; ends_at: string; status: 'confirmed' | 'completed' | 'cancelled' | 'no_show'
   total_price: number; client_name: string; can_change: boolean
-  professional: { name: string }; services: { name: string }[]
-  business: { name: string; slug: string; whatsapp: string | null; address: string | null; city: string | null; timezone: string; logo_url: string | null
+  professional: { name: string }; services: { name: string; quantity?: number; unit_label?: string | null }[]
+  business: { name: string; slug: string; category?: string; whatsapp: string | null; address: string | null; city: string | null; timezone: string; logo_url: string | null
     primary_color: string; secondary_color: string; background_color: string; cancel_limit_hours: number; max_days_ahead: number }
 }
 
@@ -55,15 +55,17 @@ export default function ManageBooking() {
   const t = makeTheme(b.primary_color, b.background_color)
   const card = { background: t.card, borderColor: t.line }
   const address = [b.address, b.city].filter(Boolean).join(', ')
-  const services = bk.services.map((s) => s.name).join(' + ')
+  const services = bk.services.map((s) => (s.unit_label ? `${qtyLabel(s.quantity ?? 1, s.unit_label)} · ${s.name}` : s.name)).join(' + ')
+  const noun = termsFor(b.category).noun
+  const fem = noun !== 'turno' && noun !== 'pedido'
 
   async function cancel() {
-    if (!confirm('¿Seguro que querés cancelar tu turno?')) return
+    if (!confirm(`¿Seguro que querés cancelar tu ${noun}?`)) return
     setError(''); setBusy(true)
     const { data, error } = await supabase.rpc('cancel_booking', { p_token: token })
     setBusy(false)
     if (error) return setError(errorMessage(error))
-    setBk(data as Booking); setDone('Tu turno quedó cancelado.')
+    setBk(data as Booking); setDone(`Tu ${noun} quedó ${fem ? 'cancelada' : 'cancelado'}.`)
   }
 
   async function move() {
@@ -77,7 +79,7 @@ export default function ManageBooking() {
       setSlots((fresh ?? []) as { t: string }[])
       return
     }
-    setBk(data as Booking); setMode('view'); setDone('¡Listo! Tu turno se cambió.')
+    setBk(data as Booking); setMode('view'); setDone(`¡Listo! Tu ${noun} se cambió.`)
   }
 
   const statusLabel = { confirmed: 'Confirmado', completed: 'Realizado', cancelled: 'Cancelado', no_show: 'No asistió' }[bk.status]
@@ -89,7 +91,7 @@ export default function ManageBooking() {
           <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl font-extrabold" style={{ background: t.primary, color: t.onPrimary }}>
             {b.logo_url ? <img src={b.logo_url} alt="" className="h-full w-full object-cover" /> : b.name.charAt(0).toUpperCase()}
           </div>
-          <div><div className="text-sm" style={{ color: t.muted }}>Tu turno en</div><div className="text-lg font-bold">{b.name}</div></div>
+          <div><div className="text-sm" style={{ color: t.muted }}>Tu {noun} en</div><div className="text-lg font-bold">{b.name}</div></div>
         </div>
 
         {done && <div className="mt-5 flex items-center gap-2 rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm font-semibold text-green-600"><Check className="h-4 w-4" /> {done}</div>}
@@ -113,7 +115,7 @@ export default function ManageBooking() {
                   <CalendarClock className="h-5 w-5" /> Cambiar día u horario
                 </button>
                 <button onClick={cancel} disabled={busy} className="flex items-center justify-center gap-2 rounded-2xl border px-5 py-3.5 font-semibold text-red-500" style={card}>
-                  {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <XCircle className="h-5 w-5" />} Cancelar turno
+                  {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <XCircle className="h-5 w-5" />} Cancelar {noun}
                 </button>
               </div>
             ) : bk.status === 'confirmed' ? (
@@ -123,11 +125,11 @@ export default function ManageBooking() {
             <div className="mt-4 grid gap-2.5">
               {b.whatsapp && (
                 <a className="flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 font-semibold text-white" style={{ background: '#25D366' }} target="_blank" rel="noreferrer"
-                  href={waLink(`Hola ${b.name}! Soy ${bk.client_name}, tengo un turno el ${longDate(ymdInTz(bk.starts_at, tz))} a las ${hmInTz(bk.starts_at, tz)}.`, b.whatsapp)}>
+                  href={waLink(`Hola ${b.name}! Soy ${bk.client_name}, tengo ${fem ? 'una' : 'un'} ${noun} el ${longDate(ymdInTz(bk.starts_at, tz))} a las ${hmInTz(bk.starts_at, tz)}.`, b.whatsapp)}>
                   <MessageCircle className="h-5 w-5" /> Escribir al negocio
                 </a>
               )}
-              <Link to={`/${b.slug}`} className="rounded-2xl border px-5 py-3.5 text-center font-semibold" style={card}>Sacar otro turno</Link>
+              <Link to={`/${b.slug}`} className="rounded-2xl border px-5 py-3.5 text-center font-semibold" style={card}>{fem ? 'Hacer otra reserva' : noun === 'pedido' ? 'Hacer otro pedido' : 'Sacar otro turno'}</Link>
             </div>
           </>
         ) : (

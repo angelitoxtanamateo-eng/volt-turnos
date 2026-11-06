@@ -151,7 +151,7 @@ function ClientDetail({ client, onClose, onChanged, manager, tz }: { client: Cli
     setForm({ name: client.name, phone: client.phone ?? '', email: client.email ?? '', notes: client.notes ?? '' })
     setError(''); setSaved(false); setHistory(null)
     supabase.from('appointments')
-      .select('*, clients(id, name, phone), appointment_services(service_id, name, duration_min, price_ars, position)')
+      .select('*, clients(id, name, phone), appointment_services(service_id, name, duration_min, price_ars, position, quantity, unit_label)')
       .eq('client_id', client.id).order('starts_at', { ascending: false }).limit(50)
       .then(({ data }) => setHistory((data ?? []) as Appointment[]))
   }, [client])

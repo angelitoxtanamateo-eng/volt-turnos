@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Plus, Ban, Trash2, Globe } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Ban, Trash2, Globe, Users } from 'lucide-react'
 import { useBusiness } from '../../../context/BusinessContext'
 import { supabase, errorMessage } from '../../../lib/supabase'
 import { useCatalog } from '../../../lib/useCatalog'
 import { Alert, Spinner } from '../../../components/ui'
+import Modal from '../../../components/Modal'
 import { APPT_STATUS, servicesLabel, type Appointment, type TimeOff } from '../../../lib/types'
 import {
   WEEKDAYS_SHORT, addDays, addMonths, daysInMonth, dayRangeIso, hmInTz, longDate, minutesInTz, monthLabel, shortDate,
@@ -15,6 +16,27 @@ import AppointmentDetail from './AppointmentDetail'
 import BlockTime from './BlockTime'
 
 type View = 'dia' | 'semana' | 'mes'
+
+/** Une a los anotados de una misma clase en un solo bloque */
+type Item = { key: string; first: Appointment; all: Appointment[]; group: boolean }
+function collapse(list: Appointment[]): Item[] {
+  const out: Item[] = []
+  const byKey = new Map<string, Item>()
+  for (const a of list) {
+    if (!a.group_service_id) { out.push({ key: a.id, first: a, all: [a], group: false }); continue }
+    const k = `${a.professional_id}|${a.session_key}`
+    const it = byKey.get(k)
+    if (it) it.all.push(a)
+    else { const n = { key: k, first: a, all: [a], group: true }; byKey.set(k, n); out.push(n) }
+  }
+  for (const it of out) {
+    if (!it.group) continue
+    const act = it.all.filter((a) => a.status !== 'cancelled')
+    it.first = act[0] ?? it.all[0]
+  }
+  return out
+}
+const activeCount = (it: Item) => it.all.filter((a) => a.status !== 'cancelled').length
 const PX = 1.4 // píxeles por minuto en la vista diaria
 
 export default function Agenda() {
@@ -33,6 +55,7 @@ export default function Agenda() {
   const [hours, setHours] = useState<{ professional_id: string; weekday: number; start_time: string; end_time: string }[]>([])
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Appointment | null>(null)
+  const [groupSel, setGroupSel] = useState<Appointment[] | null>(null)
   const [creating, setCreating] = useState<{ date?: string; time?: string; professionalId?: string } | null>(null)
   const [blocking, setBlocking] = useState(false)
 
@@ -52,7 +75,7 @@ export default function Agenda() {
     const [from, to] = dayRangeIso(range[0], range[1], tz)
     const [a, t, h] = await Promise.all([
       supabase.from('appointments')
-        .select('*, clients(id, name, phone), appointment_services(service_id, name, duration_min, price_ars, position)')
+        .select('*, clients(id, name, phone), appointment_services(service_id, name, duration_min, price_ars, position, quantity, unit_label)')
         .eq('business_id', b.id).gte('starts_at', from).lt('starts_at', to).order('starts_at'),
       supabase.from('time_off').select('id, professional_id, starts_at, ends_at, reason').eq('business_id', b.id).lt('starts_at', to).gt('ends_at', from),
       supabase.from('working_hours').select('professional_id, weekday, start_time, end_time').eq('business_id', b.id),
@@ -81,6 +104,15 @@ export default function Agenda() {
   }, [pros, appts, proFilter, lockedPro])
   const visibleIds = new Set(visiblePros.map((p) => p.id))
   const shown = (appts ?? []).filter((a) => visibleIds.has(a.professional_id))
+  const capOf = (a: Appointment) => services.find((x) => x.id === a.group_service_id)?.capacity ?? null
+  const pick = (it: Item) => (it.group ? setGroupSel(it.all) : setSelected(it.first))
+  // Mantiene la lista de la clase al día cuando cambia algo
+  useEffect(() => {
+    if (!groupSel || !appts) return
+    const k = groupSel[0]?.session_key
+    const fresh = appts.filter((a) => a.session_key === k && a.professional_id === groupSel[0].professional_id)
+    if (fresh.length !== groupSel.length || fresh.some((a, i) => a.status !== groupSel[i]?.status)) setGroupSel(fresh.length ? fresh : null)
+  }, [appts]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function shift(n: number) {
     if (view === 'dia') setDate(addDays(date, n))
@@ -146,11 +178,11 @@ export default function Agenda() {
       ) : view === 'dia' ? (
         <DayGrid
           date={date} tz={tz} pros={visiblePros} appts={shown} blocks={blocks} hours={hours} isToday={isToday}
-          onSelect={setSelected} onRemoveBlock={removeBlock}
+          onSelect={pick} capOf={capOf} onRemoveBlock={removeBlock}
           onEmpty={(proId, time) => setCreating({ date, time, professionalId: proId })}
         />
       ) : view === 'semana' ? (
-        <WeekList start={range[0]} tz={tz} appts={shown} blocks={blocks} pros={visiblePros} onSelect={setSelected} onDay={(d) => { setDate(d); setView('dia') }} />
+        <WeekList start={range[0]} tz={tz} appts={shown} blocks={blocks} pros={visiblePros} onSelect={pick} capOf={capOf} onDay={(d) => { setDate(d); setView('dia') }} />
       ) : (
         <MonthGrid month={date} tz={tz} appts={shown} onDay={(d) => { setDate(d); setView('dia') }} />
       )}
@@ -165,6 +197,36 @@ export default function Agenda() {
         address={[b.address, b.city].filter(Boolean).join(', ') || null} pros={pros}
         canCharge={isManager || Boolean(plan?.features?.cash)}
       />
+      <Modal open={!!groupSel} onClose={() => setGroupSel(null)}
+        title={groupSel?.[0] ? `${servicesLabel(groupSel[0])} · ${hmInTz(groupSel[0].starts_at, tz)}` : 'Clase'}
+        footer={groupSel?.[0] && groupSel.filter((a) => a.status !== 'cancelled').length < (capOf(groupSel[0]) ?? Infinity) ? (
+          <button className="btn-primary w-full" onClick={() => {
+            const a = groupSel![0]
+            setGroupSel(null)
+            setCreating({ date: ymdInTz(a.starts_at, tz), time: hmInTz(a.starts_at, tz), professionalId: a.professional_id })
+          }}><Plus className="h-4 w-4" /> Anotar a alguien más</button>
+        ) : undefined}>
+        {groupSel && (
+          <div>
+            <p className="mb-3 text-sm text-volt-muted">
+              <b className="text-volt-white">{groupSel.filter((a) => a.status !== 'cancelled').length}</b>
+              {capOf(groupSel[0]) ? ` de ${capOf(groupSel[0])} lugares ocupados` : ' anotados'} · {pros.find((x) => x.id === groupSel[0].professional_id)?.name}
+            </p>
+            <ul className="divide-y divide-volt-line rounded-xl border border-volt-line">
+              {groupSel.map((a) => (
+                <li key={a.id}>
+                  <button className="flex w-full items-center gap-3 px-3.5 py-3 text-left hover:bg-white/5" onClick={() => { setGroupSel(null); setSelected(a) }}>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${APPT_STATUS[a.status].dot}`} />
+                    <span className={`flex-1 truncate font-medium ${a.status === 'cancelled' ? 'text-volt-muted line-through' : ''}`}>{a.clients?.name}</span>
+                    {a.source === 'online' && <Globe className="h-3.5 w-3.5 text-volt-muted" />}
+                    <span className="text-xs text-volt-muted">{APPT_STATUS[a.status].label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Modal>
       <BlockTime
         open={blocking} onClose={() => setBlocking(false)} onCreated={load} businessId={b.id} tz={tz} pros={pros}
         defaultDate={date} lockedProfessionalId={lockedPro} canBlockAll={isManager}
@@ -174,10 +236,10 @@ export default function Agenda() {
 }
 
 /* ---------------- Vista diaria: grilla por profesional ---------------- */
-function DayGrid({ date, tz, pros, appts, blocks, hours, isToday, onSelect, onEmpty, onRemoveBlock }: {
+function DayGrid({ date, tz, pros, appts, blocks, hours, isToday, onSelect, capOf, onEmpty, onRemoveBlock }: {
   date: string; tz: string; pros: { id: string; name: string }[]; appts: Appointment[]; blocks: TimeOff[]
   hours: { professional_id: string; weekday: number; start_time: string; end_time: string }[]; isToday: boolean
-  onSelect: (a: Appointment) => void; onEmpty: (proId: string, time: string) => void; onRemoveBlock: (id: string) => void
+  onSelect: (it: Item) => void; capOf: (a: Appointment) => number | null; onEmpty: (proId: string, time: string) => void; onRemoveBlock: (id: string) => void
 }) {
   const wd = weekdayOf(date)
   const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
@@ -218,7 +280,7 @@ function DayGrid({ date, tz, pros, appts, blocks, hours, isToday, onSelect, onEm
 
           {pros.map((p) => {
             const ph = dayHours.filter((h) => h.professional_id === p.id)
-            const pa = appts.filter((a) => a.professional_id === p.id)
+            const pa = collapse(appts.filter((a) => a.professional_id === p.id))
             const pb = blocks.filter((x) => x.professional_id === null || x.professional_id === p.id)
             return (
               <div key={p.id} className="min-w-[150px] flex-1 border-r border-volt-line last:border-r-0">
@@ -256,13 +318,29 @@ function DayGrid({ date, tz, pros, appts, blocks, hours, isToday, onSelect, onEm
                     )
                   })}
                   {/* Turnos */}
-                  {pa.map((a) => {
+                  {pa.map((it) => {
+                    const a = it.first
                     const s = minutesInTz(a.starts_at, tz)
                     const en = ymdInTz(a.ends_at, tz) > date ? endMin : minutesInTz(a.ends_at, tz)
                     const st = APPT_STATUS[a.status]
                     const h = Math.max((en - s) * PX, 26)
+                    if (it.group) {
+                      const n = activeCount(it), cap = capOf(a)
+                      const done = n > 0 && it.all.filter((x) => x.status !== 'cancelled').every((x) => x.status === 'completed')
+                      return (
+                        <button key={it.key} onClick={() => onSelect(it)}
+                          className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-left text-xs shadow-sm transition hover:brightness-110 ${n === 0 ? 'border-volt-muted bg-white/5 text-volt-muted opacity-60' : done ? 'border-volt-green bg-volt-green/15' : 'border-volt-violet bg-volt-violet/25'}`}
+                          style={{ top: (s - startMin) * PX, height: h }}>
+                          <div className="flex items-center gap-1 font-semibold">
+                            <span>{hmInTz(a.starts_at, tz)}</span>
+                            <span className="truncate">{servicesLabel(a)}</span>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-90"><Users className="h-3 w-3" /> {n}{cap ? `/${cap}` : ''} anotados</div>
+                        </button>
+                      )
+                    }
                     return (
-                      <button key={a.id} onClick={() => onSelect(a)}
+                      <button key={a.id} onClick={() => onSelect(it)}
                         className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-left text-xs shadow-sm transition hover:brightness-110 ${
                           a.status === 'cancelled' ? 'border-volt-muted bg-white/5 text-volt-muted opacity-60' : a.status === 'completed' ? 'border-volt-green bg-volt-green/15' : a.status === 'no_show' ? 'border-volt-amber bg-volt-amber/15' : 'border-volt-violet bg-volt-violet/25'
                         }`}
@@ -297,18 +375,18 @@ function DayGrid({ date, tz, pros, appts, blocks, hours, isToday, onSelect, onEm
 }
 
 /* ---------------- Vista semanal ---------------- */
-function WeekList({ start, tz, appts, blocks, pros, onSelect, onDay }: {
+function WeekList({ start, tz, appts, blocks, pros, onSelect, capOf, onDay }: {
   start: string; tz: string; appts: Appointment[]; blocks: TimeOff[]; pros: { id: string; name: string }[]
-  onSelect: (a: Appointment) => void; onDay: (d: string) => void
+  onSelect: (it: Item) => void; capOf: (a: Appointment) => number | null; onDay: (d: string) => void
 }) {
   const today = todayInTz(tz)
   return (
     <div className="grid gap-3 lg:grid-cols-7">
       {Array.from({ length: 7 }, (_, i) => {
         const d = addDays(start, i)
-        const list = appts.filter((a) => ymdInTz(a.starts_at, tz) === d)
+        const list = collapse(appts.filter((a) => ymdInTz(a.starts_at, tz) === d))
         const hasBlock = blocks.some((x) => ymdInTz(x.starts_at, tz) <= d && ymdInTz(x.ends_at, tz) >= d)
-        const active = list.filter((a) => a.status !== 'cancelled').length
+        const active = list.reduce((n, it) => n + activeCount(it), 0)
         return (
           <div key={d} className={`card flex flex-col p-3 ${d === today ? 'border-volt-violet' : ''}`}>
             <button onClick={() => onDay(d)} className="mb-2 flex items-center justify-between text-left">
@@ -317,11 +395,11 @@ function WeekList({ start, tz, appts, blocks, pros, onSelect, onDay }: {
             </button>
             <div className="space-y-1.5">
               {list.length === 0 && <div className="py-2 text-xs text-volt-muted">Sin turnos</div>}
-              {list.map((a) => (
-                <button key={a.id} onClick={() => onSelect(a)} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-white/5 ${a.status === 'cancelled' ? 'opacity-50 line-through' : ''}`}>
+              {list.map(({ first: a, ...it }) => (
+                <button key={it.key} onClick={() => onSelect({ first: a, ...it })} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-white/5 ${(it.group ? activeCount({ first: a, ...it }) === 0 : a.status === 'cancelled') ? 'opacity-50 line-through' : ''}`}>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${APPT_STATUS[a.status].dot}`} />
                   <span className="font-semibold">{hmInTz(a.starts_at, tz)}</span>
-                  <span className="truncate">{a.clients?.name}</span>
+                  <span className="truncate">{it.group ? `${servicesLabel(a)} · ${activeCount({ first: a, ...it })}${capOf(a) ? `/${capOf(a)}` : ''}` : a.clients?.name}</span>
                   {pros.length > 1 && <span className="ml-auto shrink-0 text-volt-muted">{pros.find((p) => p.id === a.professional_id)?.name.split(' ')[0]}</span>}
                 </button>
               ))}

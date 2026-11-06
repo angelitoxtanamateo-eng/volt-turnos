@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
-  MapPin, MessageCircle, Instagram, Facebook, EyeOff, ArrowLeft, Check, Clock, CalendarPlus, Users, Loader2, CalendarCheck, ExternalLink,
+  MapPin, MessageCircle, Instagram, Facebook, EyeOff, ArrowLeft, Check, Clock, CalendarPlus, Users, Loader2, CalendarCheck, ExternalLink, Minus, Plus,
 } from 'lucide-react'
 import { supabase, errorMessage } from '../lib/supabase'
 import { FullScreenLoader, Logo } from '../components/ui'
 import { waLink } from '../lib/share'
-import { ars } from '../lib/types'
+import { ars, priceLabel, qtyLabel, termsFor } from '../lib/types'
 import { fmtDuration, hmInTz, longDate, todayInTz, ymdInTz } from '../lib/time'
 import { DateStrip, SlotGrid, googleCalendarUrl, makeTheme } from '../components/booking'
 import { manageUrl, msgClientToBusiness } from '../lib/messages'
@@ -15,12 +15,14 @@ interface Biz {
   id: string; slug: string; name: string; description: string | null; logo_url: string | null; cover_url: string | null
   primary_color: string; secondary_color: string; background_color: string; socials: Record<string, string>
   whatsapp: string | null; address: string | null; city: string | null; timezone: string; is_published: boolean
-  max_days_ahead: number; cancel_limit_hours: number; accepting: boolean; gallery?: string[]
+  max_days_ahead: number; cancel_limit_hours: number; accepting: boolean; gallery?: string[]; category?: string
 }
-interface Svc { id: string; name: string; description: string | null; duration_min: number; price_ars: number }
+interface Svc { id: string; name: string; description: string | null; duration_min: number; price_ars: number; capacity?: number; unit_label?: string | null; max_qty?: number }
+const isSpecial = (s: Svc) => (s.capacity ?? 1) > 1 || !!s.unit_label
 interface Pro { id: string; name: string; specialty: string | null; photo_url: string | null; service_ids: string[] }
 interface Catalog { business: Biz; services: Svc[]; professionals: Pro[] }
-interface Booking { token: string; starts_at: string; ends_at: string; total_price: number; professional: { name: string }; services: { name: string }[] }
+interface Booking { token: string; starts_at: string; ends_at: string; total_price: number; professional: { name: string }; services: { name: string; quantity?: number; unit_label?: string | null; position?: number }[] }
+type Slot = { t: string; p: string; l?: number | null }
 
 type Step = 'servicios' | 'profesional' | 'horario' | 'datos' | 'listo'
 
@@ -29,9 +31,10 @@ export default function PublicBusiness() {
   const [cat, setCat] = useState<Catalog | null | undefined>(undefined)
   const [step, setStep] = useState<Step>('servicios')
   const [svc, setSvc] = useState<string[]>([])
+  const [qty, setQty] = useState(1)
   const [pro, setPro] = useState<string | null>(null) // null = cualquiera
   const [date, setDate] = useState('')
-  const [slots, setSlots] = useState<{ t: string; p: string }[] | null>(null)
+  const [slots, setSlots] = useState<Slot[] | null>(null)
   const [slot, setSlot] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', phone: '', email: '' })
   const [error, setError] = useState('')
@@ -47,7 +50,7 @@ export default function PublicBusiness() {
     } catch { /* sin storage */ }
   }, [slug])
 
-  useEffect(() => { if (cat) { document.title = `${cat.business.name} · Reservá tu turno`; setDate(todayInTz(cat.business.timezone)) } }, [cat])
+  useEffect(() => { if (cat) { document.title = `${cat.business.name} · Reservá online`; setDate(todayInTz(cat.business.timezone)) } }, [cat])
 
   const biz = cat?.business
   const tz = biz?.timezone ?? 'America/Argentina/Cordoba'
@@ -59,7 +62,7 @@ export default function PublicBusiness() {
     let alive = true
     setSlots(null); setSlot(null)
     supabase.rpc('get_available_slots', { p_slug: slug, p_service_ids: svc, p_professional_id: pro, p_date: date })
-      .then(({ data }) => { if (alive) setSlots((data ?? []) as { t: string; p: string }[]) })
+      .then(({ data }) => { if (alive) setSlots((data ?? []) as Slot[]) })
     return () => { alive = false }
   }, [step, date, pro, svc, slug, cat, reloadKey])
 
@@ -80,7 +83,21 @@ export default function PublicBusiness() {
   const t = makeTheme(biz.primary_color, biz.background_color)
   const chosen = cat.services.filter((s) => svc.includes(s.id))
   const totalMin = chosen.reduce((a, s) => a + s.duration_min, 0)
-  const totalPrice = chosen.reduce((a, s) => a + Number(s.price_ars), 0)
+  const unitSvc = chosen.length === 1 && chosen[0].unit_label ? chosen[0] : null
+  const q = unitSvc ? qty : 1
+  const totalPrice = chosen.reduce((a, s) => a + Number(s.price_ars), 0) * q
+  const tr = termsFor(biz.category)
+  const showPro = cat.professionals.length > 1
+  const chosenLabel = chosen.map((s) => (unitSvc ? `${qtyLabel(q, s.unit_label)} · ${s.name}` : s.name)).join(' + ')
+  const bookedLabel = (bk: Booking) => bk.services.map((s) => (s.unit_label ? `${qtyLabel(s.quantity ?? 1, s.unit_label)} · ${s.name}` : s.name)).join(' + ')
+  function toggleSvc(s: Svc) {
+    const on = svc.includes(s.id)
+    if (on) { setSvc(svc.filter((x) => x !== s.id)); return }
+    setQty(1)
+    // Las clases con cupo y los productos por unidad se reservan de a uno
+    if (isSpecial(s) || chosen.some(isSpecial)) setSvc([s.id])
+    else setSvc([...svc, s.id])
+  }
   const proName = (id: string | null) => cat.professionals.find((p) => p.id === id)?.name
   const ig = biz.socials?.instagram
   const fb = biz.socials?.facebook
@@ -111,7 +128,7 @@ export default function PublicBusiness() {
     const chosenSlot = slots?.find((s) => s.t === slot)
     const { data, error } = await supabase.rpc('create_booking', {
       p_slug: slug, p_service_ids: svc, p_professional_id: pro ?? chosenSlot?.p ?? null, p_starts_at: slot,
-      p_name: form.name.trim(), p_phone: form.phone.trim(), p_email: form.email.trim() || null,
+      p_name: form.name.trim(), p_phone: form.phone.trim(), p_email: form.email.trim() || null, p_quantity: q,
     })
     setBusy(false)
     if (error) {
@@ -157,8 +174,8 @@ export default function PublicBusiness() {
           <div className="mt-6 flex items-center gap-3">
             <button onClick={back} className="grid h-10 w-10 place-items-center rounded-full border" style={cardStyle} aria-label="Volver"><ArrowLeft className="h-4 w-4" /></button>
             <div className="min-w-0 text-sm">
-              <div className="truncate font-semibold">{chosen.map((s) => s.name).join(' + ')}</div>
-              <div style={{ color: t.muted }}>{fmtDuration(totalMin)} · {ars(totalPrice)}{pro && step !== 'profesional' ? ` · ${proName(pro)}` : ''}</div>
+              <div className="truncate font-semibold">{chosenLabel}</div>
+              <div style={{ color: t.muted }}>{unitSvc ? '' : `${fmtDuration(totalMin)} · `}{ars(totalPrice)}{pro && showPro && step !== 'profesional' ? ` · ${proName(pro)}` : ''}</div>
             </div>
           </div>
         )}
@@ -187,25 +204,42 @@ export default function PublicBusiness() {
               <div className="mt-6 rounded-2xl border p-5 text-center text-sm" style={{ ...cardStyle, color: t.muted }}>Pronto vas a poder reservar acá.</div>
             ) : (
               <>
-                <h2 className="mt-7 text-lg font-bold">¿Qué te querés hacer?</h2>
-                <p className="text-sm" style={{ color: t.muted }}>Podés elegir más de uno.</p>
+                <h2 className="mt-7 text-lg font-bold">{tr.pick}</h2>
+                <p className="text-sm" style={{ color: t.muted }}>{cat.services.some(isSpecial) ? tr.pickHint : 'Podés elegir más de uno.'}</p>
                 <div className="mt-4 space-y-2.5">
                   {cat.services.map((s) => {
                     const on = svc.includes(s.id)
                     return (
-                      <button key={s.id} onClick={() => setSvc(on ? svc.filter((x) => x !== s.id) : [...svc, s.id])}
-                        className="flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition active:scale-[.99]"
-                        style={{ background: on ? `${t.primary}1f` : t.card, borderColor: on ? t.primary : t.line }}>
+                      <div key={s.id} className="rounded-2xl border transition" style={{ background: on ? `${t.primary}1f` : t.card, borderColor: on ? t.primary : t.line }}>
+                      <button onClick={() => toggleSvc(s)}
+                        className="flex w-full items-center gap-3 p-4 text-left transition active:scale-[.99]">
                         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border-2" style={{ borderColor: on ? t.primary : t.line, background: on ? t.primary : 'transparent', color: t.onPrimary }}>
                           {on && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block font-semibold">{s.name}</span>
                           {s.description && <span className="block text-xs" style={{ color: t.muted }}>{s.description}</span>}
-                          <span className="mt-0.5 flex items-center gap-1 text-xs" style={{ color: t.muted }}><Clock className="h-3 w-3" /> {fmtDuration(s.duration_min)}</span>
+                          {s.unit_label ? null : (s.capacity ?? 1) > 1 ? (
+                            <span className="mt-0.5 flex items-center gap-1 text-xs" style={{ color: t.muted }}><Users className="h-3 w-3" /> Clase de {fmtDuration(s.duration_min)} · hasta {s.capacity} personas</span>
+                          ) : (
+                            <span className="mt-0.5 flex items-center gap-1 text-xs" style={{ color: t.muted }}><Clock className="h-3 w-3" /> {fmtDuration(s.duration_min)}</span>
+                          )}
                         </span>
-                        <span className="font-bold">{ars(Number(s.price_ars))}</span>
+                        <span className="shrink-0 text-right font-bold">{priceLabel(s)}</span>
                       </button>
+                      {on && s.unit_label && (
+                        <div className="flex items-center justify-between gap-3 border-t px-4 py-3" style={{ borderColor: t.line }}>
+                          <span className="text-sm font-semibold">Cantidad</span>
+                          <div className="flex items-center gap-2">
+                            <button type="button" aria-label="Menos" onClick={() => setQty(Math.max(1, qty - 1))} className="grid h-10 w-10 place-items-center rounded-full border" style={{ borderColor: t.line }}><Minus className="h-4 w-4" /></button>
+                            <input inputMode="numeric" aria-label="Cantidad" value={qty}
+                              onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setQty(Math.min(s.max_qty ?? 999, Math.max(1, n || 1))) }}
+                              className="w-14 rounded-xl border bg-transparent py-2 text-center text-base font-bold outline-none" style={{ borderColor: t.line }} />
+                            <button type="button" aria-label="Más" onClick={() => setQty(Math.min(s.max_qty ?? 999, qty + 1))} className="grid h-10 w-10 place-items-center rounded-full border" style={{ borderColor: t.line }}><Plus className="h-4 w-4" /></button>
+                          </div>
+                        </div>
+                      )}
+                      </div>
                     )
                   })}
                 </div>
@@ -217,7 +251,7 @@ export default function PublicBusiness() {
         {/* 2. Profesional */}
         {step === 'profesional' && (
           <>
-            <h2 className="mt-6 text-lg font-bold">¿Con quién?</h2>
+            <h2 className="mt-6 text-lg font-bold">{tr.who}</h2>
             <div className="mt-4 space-y-2.5">
               {[{ id: null as string | null, name: 'Cualquiera disponible', specialty: 'Te mostramos todos los horarios' }, ...eligible].map((p) => (
                 <button key={p.id ?? 'any'} onClick={() => { setPro(p.id); setStep('horario') }}
@@ -238,7 +272,7 @@ export default function PublicBusiness() {
         {/* 3. Día y horario */}
         {step === 'horario' && (
           <>
-            <h2 className="mt-6 text-lg font-bold">Elegí día y horario</h2>
+            <h2 className="mt-6 text-lg font-bold">{tr.whenTitle}</h2>
             <div className="mt-4"><DateStrip from={todayInTz(tz)} days={Math.min(biz.max_days_ahead + 1, 60)} value={date} onChange={setDate} t={t} /></div>
             <div className="mt-4">
               {slots === null ? (
@@ -246,7 +280,7 @@ export default function PublicBusiness() {
               ) : slots.length === 0 ? (
                 <div className="rounded-2xl border p-6 text-center text-sm" style={{ ...cardStyle, color: t.muted }}>No quedan horarios este día. Probá con otro.</div>
               ) : (
-                <SlotGrid slots={slots.map((s) => ({ t: s.t, label: hmInTz(s.t, tz) }))} value={slot} onChange={setSlot} t={t} />
+                <SlotGrid slots={slots.map((s) => ({ t: s.t, label: hmInTz(s.t, tz), sub: chosen.some((c) => (c.capacity ?? 1) > 1 && !c.unit_label) && s.l != null ? (s.l === 1 ? 'queda 1' : `quedan ${s.l}`) : undefined }))} value={slot} onChange={setSlot} t={t} />
               )}
             </div>
           </>
@@ -257,7 +291,7 @@ export default function PublicBusiness() {
           <form id="datos" onSubmit={confirm}>
             <div className="mt-6 rounded-2xl border p-4" style={cardStyle}>
               <div className="flex items-center gap-2 text-sm font-semibold"><CalendarCheck className="h-4 w-4" style={{ color: t.primary }} /> <span className="capitalize">{longDate(ymdInTz(slot, tz))}</span> · {hmInTz(slot, tz)} hs</div>
-              <div className="mt-1 text-sm" style={{ color: t.muted }}>con {proName(pro ?? slots?.find((s) => s.t === slot)?.p ?? null)}</div>
+              {showPro && <div className="mt-1 text-sm" style={{ color: t.muted }}>{biz.category === 'gastronomia' ? 'Retiro en' : 'con'} {proName(pro ?? slots?.find((s) => s.t === slot)?.p ?? null)}</div>}
             </div>
             <h2 className="mt-6 text-lg font-bold">Tus datos</h2>
             <div className="mt-3 space-y-3">
@@ -275,7 +309,7 @@ export default function PublicBusiness() {
                 </label>
               ))}
             </div>
-            <p className="mt-3 text-xs" style={{ color: t.muted }}>Usamos tu WhatsApp solo para avisarte sobre este turno.</p>
+            <p className="mt-3 text-xs" style={{ color: t.muted }}>Usamos tu WhatsApp solo para avisarte sobre {tr.noun === 'turno' ? 'este turno' : `esta ${tr.noun}`}.</p>
           </form>
         )}
 
@@ -283,32 +317,32 @@ export default function PublicBusiness() {
         {step === 'listo' && booking && (
           <div className="pt-10 text-center">
             <div className="mx-auto grid h-20 w-20 place-items-center rounded-full animate-fade-up" style={primaryBtn}><Check className="h-10 w-10" strokeWidth={3} /></div>
-            <h1 className="mt-5 text-2xl font-extrabold">¡Turno confirmado!</h1>
-            <p className="mt-1" style={{ color: t.muted }}>Te esperamos en {biz.name}</p>
+            <h1 className="mt-5 text-2xl font-extrabold">{tr.confirmed}</h1>
+            <p className="mt-1" style={{ color: t.muted }}>{biz.category === 'gastronomia' ? `Gracias por tu pedido en ${biz.name}` : `Te esperamos en ${biz.name}`}</p>
             <div className="mt-6 rounded-2xl border p-5 text-left" style={cardStyle}>
               <div className="text-lg font-bold capitalize">{longDate(ymdInTz(booking.starts_at, tz))}</div>
               <div className="text-3xl font-extrabold" style={{ color: t.primary }}>{hmInTz(booking.starts_at, tz)} hs</div>
-              <div className="mt-3 text-sm">{booking.services.map((s) => s.name).join(' + ')} con <b>{booking.professional.name}</b></div>
+              <div className="mt-3 text-sm">{bookedLabel(booking)}{showPro && <> {biz.category === 'gastronomia' ? '· retiro en' : 'con'} <b>{booking.professional.name}</b></>}</div>
               <div className="mt-1 text-sm" style={{ color: t.muted }}>Total estimado: {ars(Number(booking.total_price))}</div>
               {address && <div className="mt-1 flex items-center gap-1.5 text-sm" style={{ color: t.muted }}><MapPin className="h-3.5 w-3.5" /> {address}</div>}
             </div>
             <div className="mt-4 grid gap-2.5">
               {biz.whatsapp && (
                 <a className="flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 font-semibold text-white" style={{ background: '#25D366' }} target="_blank" rel="noreferrer"
-                  href={waLink(msgClientToBusiness({ businessName: biz.name, clientName: form.name, startsAt: booking.starts_at, tz, services: booking.services.map((s) => s.name).join(' + '), professional: booking.professional.name }), biz.whatsapp)}>
+                  href={waLink(msgClientToBusiness({ businessName: biz.name, clientName: form.name, startsAt: booking.starts_at, tz, services: bookedLabel(booking), professional: booking.professional.name }), biz.whatsapp)}>
                   <MessageCircle className="h-5 w-5" /> Avisarle al negocio por WhatsApp
                 </a>
               )}
               <a className="flex items-center justify-center gap-2 rounded-2xl border px-5 py-3.5 font-semibold" style={cardStyle} target="_blank" rel="noreferrer"
-                href={googleCalendarUrl(`Turno en ${biz.name}`, booking.starts_at, booking.ends_at, `${booking.services.map((s) => s.name).join(' + ')} con ${booking.professional.name}\nCambiar o cancelar: ${manageUrl(booking.token)}`, address)}>
+                href={googleCalendarUrl(`${tr.noun.charAt(0).toUpperCase()}${tr.noun.slice(1)} en ${biz.name}`, booking.starts_at, booking.ends_at, `${bookedLabel(booking)}\nCambiar o cancelar: ${manageUrl(booking.token)}`, address)}>
                 <CalendarPlus className="h-5 w-5" /> Agregar a mi calendario
               </a>
               <Link to={`/turno/${booking.token}`} className="flex items-center justify-center gap-2 rounded-2xl border px-5 py-3.5 font-semibold" style={cardStyle}>
-                <ExternalLink className="h-5 w-5" /> Ver, cambiar o cancelar mi turno
+                <ExternalLink className="h-5 w-5" /> Ver, cambiar o cancelar mi {tr.noun}
               </Link>
             </div>
-            <p className="mt-4 text-xs" style={{ color: t.muted }}>Guardá este link para gestionar tu turno. Podés cambiarlo o cancelarlo hasta {biz.cancel_limit_hours ? `${biz.cancel_limit_hours} h antes` : 'la hora del turno'}.</p>
-            <button className="mt-6 text-sm font-semibold underline" onClick={() => { setStep('servicios'); setSvc([]); setPro(null); setSlot(null); setBooking(null) }}>Sacar otro turno</button>
+            <p className="mt-4 text-xs" style={{ color: t.muted }}>Guardá este link para gestionar tu {tr.noun}. Podés cambiarlo o cancelarlo hasta {biz.cancel_limit_hours ? `${biz.cancel_limit_hours} h antes` : 'la hora reservada'}.</p>
+            <button className="mt-6 text-sm font-semibold underline" onClick={() => { setStep('servicios'); setSvc([]); setQty(1); setPro(null); setSlot(null); setBooking(null) }}>{tr.noun === 'pedido' ? 'Hacer otro pedido' : tr.noun === 'turno' ? 'Sacar otro turno' : 'Hacer otra reserva'}</button>
           </div>
         )}
 
@@ -333,13 +367,13 @@ export default function PublicBusiness() {
           <div className="mx-auto flex max-w-xl items-center gap-3">
             <div className="min-w-0 flex-1 text-sm">
               {step === 'horario' && slot ? <><b>{hmInTz(slot, tz)} hs</b><div className="capitalize" style={{ color: t.muted }}>{longDate(date)}</div></>
-                : <><b>{ars(totalPrice)}</b><div style={{ color: t.muted }}>{fmtDuration(totalMin)}</div></>}
+                : <><b>{ars(totalPrice)}</b><div style={{ color: t.muted }}>{unitSvc ? qtyLabel(q, unitSvc.unit_label) : fmtDuration(totalMin)}</div></>}
             </div>
             {step === 'servicios' && <button onClick={next} className="rounded-2xl px-6 py-3.5 font-bold" style={primaryBtn}>Continuar</button>}
             {step === 'horario' && <button onClick={() => { setError(''); setStep('datos') }} className="rounded-2xl px-6 py-3.5 font-bold" style={primaryBtn}>Continuar</button>}
             {step === 'datos' && (
               <button form="datos" disabled={busy} className="flex items-center gap-2 rounded-2xl px-6 py-3.5 font-bold disabled:opacity-60" style={primaryBtn}>
-                {busy && <Loader2 className="h-4 w-4 animate-spin" />} Confirmar turno
+                {busy && <Loader2 className="h-4 w-4 animate-spin" />} Confirmar {tr.noun}
               </button>
             )}
           </div>

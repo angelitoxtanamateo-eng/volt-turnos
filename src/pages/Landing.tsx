@@ -5,7 +5,7 @@ import { Logo } from '../components/ui'
 import InstallApp from '../components/InstallApp'
 
 const FEATURES = [
-  { icon: <CalendarCheck className="h-5 w-5" />, title: 'Turnos 24/7', text: 'Tus clientes reservan solos desde tu link, sin choques de horario.' },
+  { icon: <CalendarCheck className="h-5 w-5" />, title: 'Turnos 24/7', text: 'Tus clientes reservan solos desde tu link: turnos, clases con cupos o pedidos por cantidad.' },
   { icon: <Palette className="h-5 w-5" />, title: 'Tu marca', text: 'Página con tu logo, colores y fotos. Plantillas para cada rubro.' },
   { icon: <Users className="h-5 w-5" />, title: 'Tu equipo', text: 'Cada profesional con su agenda, horarios y servicios.' },
   { icon: <Wallet className="h-5 w-5" />, title: 'Caja y clientes', text: 'Ingresos del día, historial y clientes frecuentes.' },
@@ -26,12 +26,12 @@ export default function Landing() {
       </header>
 
       <section className="relative mx-auto max-w-3xl px-4 pb-16 pt-14 text-center sm:pt-20">
-        <span className="chip bg-volt-violet/15 text-volt-violet2">Para peluquerías, barberías, uñas y estética</span>
+        <span className="chip bg-volt-violet/15 text-volt-violet2">Peluquerías, barberías, estética, gimnasios, comidas y más</span>
         <h1 className="mt-5 text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">
           Tu agenda llena,<br /><span className="bg-gradient-to-r from-volt-violet2 to-fuchsia-400 bg-clip-text text-transparent">sin contestar mensajes.</span>
         </h1>
         <p className="mx-auto mt-5 max-w-xl text-lg text-volt-muted">
-          Tus clientes eligen servicio, profesional y horario desde un link. Vos te enfocás en atender.
+          Tus clientes eligen qué quieren, con quién y a qué hora desde un link. Vos te enfocás en atender.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link to={user ? '/panel' : '/registro'} className="btn-primary px-6 py-3.5 text-base">
