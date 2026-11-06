@@ -11,6 +11,13 @@
 | B3 | Falta configurar el webhook de Mercado Pago (`/functions/v1/mp-webhook`, evento "Planes y suscripciones"). | Ángel | Panel de desarrolladores de Mercado Pago. |
 | B4 | Hay dos negocios de demostración publicados con datos de ejemplo ("Peluquería Demo" y "Alma Catering"). La regla 5 dice "no usar datos ficticios en producción". | Ángel decide | Opción A: despublicarlos y publicarlos solo para mostrar. Opción B: borrarlos cuando cierre la venta. Opción C: mover las demos a un proyecto aparte. |
 
+## Revisión de seguridad (advisors de Supabase, 06/11)
+
+- Las funciones públicas que puede llamar alguien sin sesión (catálogo, horarios, reservar, ver/cancelar/cambiar con el link) son a propósito: validan todo adentro y solo exponen datos públicos del negocio o la reserva del propio token.
+- Las funciones del panel verifican el rol del usuario dentro de cada una.
+- Pendiente (Ángel, 1 minuto): activar "Leaked password protection" en Supabase → Authentication → Password security.
+- Aviso: en esta misma base hay un esquema `oficina` con 7 funciones sin `search_path` fijo. No es parte de VOLT Turnos (viene de otro trabajo); conviene moverlo a otro proyecto o corregirlo.
+
 ## Estado por sección de la guía
 
 Leyenda: ✅ hecho y probado en la base · 🟡 parcial · ❌ no existe
