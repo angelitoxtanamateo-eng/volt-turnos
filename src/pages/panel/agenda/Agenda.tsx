@@ -37,6 +37,10 @@ function collapse(list: Appointment[]): Item[] {
   return out
 }
 const activeCount = (it: Item) => it.all.filter((a) => a.status !== 'cancelled').length
+/** Pedidos por unidad: comparten el horario aunque lleven productos distintos */
+const isOrderGroup = (a: Appointment) => !!a.group_service_id && a.group_service_id === a.business_id
+const groupTitle = (a: Appointment) => (isOrderGroup(a) ? 'Pedidos' : servicesLabel(a))
+const groupCount = (n: number, a: Appointment) => (isOrderGroup(a) ? `${n} ${n === 1 ? 'pedido' : 'pedidos'}` : `${n} anotados`)
 const PX = 1.4 // píxeles por minuto en la vista diaria
 
 export default function Agenda() {
@@ -104,7 +108,13 @@ export default function Agenda() {
   }, [pros, appts, proFilter, lockedPro])
   const visibleIds = new Set(visiblePros.map((p) => p.id))
   const shown = (appts ?? []).filter((a) => visibleIds.has(a.professional_id))
-  const capOf = (a: Appointment) => services.find((x) => x.id === a.group_service_id)?.capacity ?? null
+  const capOf = (a: Appointment) => {
+    if (isOrderGroup(a)) {
+      const caps = services.filter((x) => x.unit_label && x.is_active).map((x) => x.capacity)
+      return caps.length ? Math.min(...caps) : null
+    }
+    return services.find((x) => x.id === a.group_service_id)?.capacity ?? null
+  }
   const pick = (it: Item) => (it.group ? setGroupSel(it.all) : setSelected(it.first))
   // Mantiene la lista de la clase al día cuando cambia algo
   useEffect(() => {
@@ -198,26 +208,29 @@ export default function Agenda() {
         canCharge={isManager || Boolean(plan?.features?.cash)}
       />
       <Modal open={!!groupSel} onClose={() => setGroupSel(null)}
-        title={groupSel?.[0] ? `${servicesLabel(groupSel[0])} · ${hmInTz(groupSel[0].starts_at, tz)}` : 'Clase'}
+        title={groupSel?.[0] ? `${groupTitle(groupSel[0])} · ${hmInTz(groupSel[0].starts_at, tz)}` : 'Clase'}
         footer={groupSel?.[0] && groupSel.filter((a) => a.status !== 'cancelled').length < (capOf(groupSel[0]) ?? Infinity) ? (
           <button className="btn-primary w-full" onClick={() => {
             const a = groupSel![0]
             setGroupSel(null)
             setCreating({ date: ymdInTz(a.starts_at, tz), time: hmInTz(a.starts_at, tz), professionalId: a.professional_id })
-          }}><Plus className="h-4 w-4" /> Anotar a alguien más</button>
+          }}><Plus className="h-4 w-4" /> {isOrderGroup(groupSel![0]) ? 'Cargar otro pedido' : 'Anotar a alguien más'}</button>
         ) : undefined}>
         {groupSel && (
           <div>
             <p className="mb-3 text-sm text-volt-muted">
               <b className="text-volt-white">{groupSel.filter((a) => a.status !== 'cancelled').length}</b>
-              {capOf(groupSel[0]) ? ` de ${capOf(groupSel[0])} lugares ocupados` : ' anotados'} · {pros.find((x) => x.id === groupSel[0].professional_id)?.name}
+              {capOf(groupSel[0]) ? ` de ${capOf(groupSel[0])} ${isOrderGroup(groupSel[0]) ? 'pedidos posibles' : 'lugares ocupados'}` : ' anotados'} · {pros.find((x) => x.id === groupSel[0].professional_id)?.name}
             </p>
             <ul className="divide-y divide-volt-line rounded-xl border border-volt-line">
               {groupSel.map((a) => (
                 <li key={a.id}>
                   <button className="flex w-full items-center gap-3 px-3.5 py-3 text-left hover:bg-white/5" onClick={() => { setGroupSel(null); setSelected(a) }}>
                     <span className={`h-2 w-2 shrink-0 rounded-full ${APPT_STATUS[a.status].dot}`} />
-                    <span className={`flex-1 truncate font-medium ${a.status === 'cancelled' ? 'text-volt-muted line-through' : ''}`}>{a.clients?.name}</span>
+                    <span className={`min-w-0 flex-1 ${a.status === 'cancelled' ? 'text-volt-muted line-through' : ''}`}>
+                      <span className="block truncate font-medium">{a.clients?.name}</span>
+                      {isOrderGroup(a) && <span className="block truncate text-xs text-volt-muted">{servicesLabel(a)}</span>}
+                    </span>
                     {a.source === 'online' && <Globe className="h-3.5 w-3.5 text-volt-muted" />}
                     <span className="text-xs text-volt-muted">{APPT_STATUS[a.status].label}</span>
                   </button>
@@ -333,9 +346,9 @@ function DayGrid({ date, tz, pros, appts, blocks, hours, isToday, onSelect, capO
                           style={{ top: (s - startMin) * PX, height: h }}>
                           <div className="flex items-center gap-1 font-semibold">
                             <span>{hmInTz(a.starts_at, tz)}</span>
-                            <span className="truncate">{servicesLabel(a)}</span>
+                            <span className="truncate">{groupTitle(a)}</span>
                           </div>
-                          <div className="flex items-center gap-1 opacity-90"><Users className="h-3 w-3" /> {n}{cap ? `/${cap}` : ''} anotados</div>
+                          <div className="flex items-center gap-1 opacity-90"><Users className="h-3 w-3" /> {groupCount(n, a)}{cap ? ` de ${cap}` : ''}</div>
                         </button>
                       )
                     }
@@ -399,7 +412,7 @@ function WeekList({ start, tz, appts, blocks, pros, onSelect, capOf, onDay }: {
                 <button key={it.key} onClick={() => onSelect({ first: a, ...it })} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-white/5 ${(it.group ? activeCount({ first: a, ...it }) === 0 : a.status === 'cancelled') ? 'opacity-50 line-through' : ''}`}>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${APPT_STATUS[a.status].dot}`} />
                   <span className="font-semibold">{hmInTz(a.starts_at, tz)}</span>
-                  <span className="truncate">{it.group ? `${servicesLabel(a)} · ${activeCount({ first: a, ...it })}${capOf(a) ? `/${capOf(a)}` : ''}` : a.clients?.name}</span>
+                  <span className="truncate">{it.group ? `${groupTitle(a)} · ${groupCount(activeCount({ first: a, ...it }), a)}` : a.clients?.name}</span>
                   {pros.length > 1 && <span className="ml-auto shrink-0 text-volt-muted">{pros.find((p) => p.id === a.professional_id)?.name.split(' ')[0]}</span>}
                 </button>
               ))}

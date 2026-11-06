@@ -28,7 +28,7 @@ export default function NewAppointment(p: Props) {
   const [newClient, setNewClient] = useState({ name: '', phone: '' })
   const [mode, setMode] = useState<'search' | 'new'>('search')
   const [svc, setSvc] = useState<string[]>([])
-  const [qty, setQty] = useState(1)
+  const [qty, setQty] = useState<Record<string, number>>({})
   const [pro, setPro] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
@@ -40,7 +40,7 @@ export default function NewAppointment(p: Props) {
   useEffect(() => {
     if (!p.open) return
     setClientQuery(''); setHits([]); setClient(null); setNewClient({ name: '', phone: '' }); setMode('search')
-    setSvc([]); setQty(1); setNotes(''); setError('')
+    setSvc([]); setQty({}); setNotes(''); setError('')
     setPro(p.lockedProfessionalId ?? p.defaults?.professionalId ?? '')
     setDate(p.defaults?.date ?? todayInTz(p.tz))
     setTime(p.defaults?.time ?? '')
@@ -69,15 +69,15 @@ export default function NewAppointment(p: Props) {
 
   const totalMin = svc.reduce((a, id) => a + (p.services.find((s) => s.id === id)?.duration_min ?? 0), 0)
   const chosen = p.services.filter((s) => svc.includes(s.id))
-  const unitSvc = chosen.length === 1 && chosen[0].unit_label ? chosen[0] : null
-  const groupSvc = chosen.length === 1 && chosen[0].capacity > 1 && !chosen[0].unit_label ? chosen[0] : null
-  const q = unitSvc ? qty : 1
-  const totalPrice = svc.reduce((a, id) => a + Number(p.services.find((s) => s.id === id)?.price_ars ?? 0), 0) * q
-  const special = (s: Service) => s.capacity > 1 || !!s.unit_label
+  const isUnit = (s: Service) => !!s.unit_label
+  const isClass = (s: Service) => !s.unit_label && s.capacity > 1
+  const units = chosen.filter(isUnit)
+  const groupSvc = chosen.length === 1 && isClass(chosen[0]) ? chosen[0] : null
+  const qOf = (s: Service) => (isUnit(s) ? qty[s.id] ?? 1 : 1)
+  const totalPrice = chosen.reduce((a, s) => a + Number(s.price_ars) * qOf(s), 0)
   function toggle(s: Service) {
     if (svc.includes(s.id)) return setSvc(svc.filter((x) => x !== s.id))
-    setQty(1)
-    setSvc(special(s) || chosen.some(special) ? [s.id] : [...svc, s.id])
+    setSvc(isClass(s) || chosen.some(isClass) || chosen.some((c) => isUnit(c) !== isUnit(s)) ? [s.id] : [...svc, s.id])
   }
 
   // Horarios libres sugeridos (según horario laboral)
@@ -107,7 +107,7 @@ export default function NewAppointment(p: Props) {
       p_client_name: mode === 'new' ? newClient.name.trim() : null,
       p_client_phone: mode === 'new' ? newClient.phone.trim() || null : null,
       p_notes: notes.trim() || null,
-      p_quantity: q,
+      p_quantities: svc.map((id) => qty[id] ?? 1),
     })
     setBusy(false)
     if (error) return setError(errorMessage(error))
@@ -119,7 +119,7 @@ export default function NewAppointment(p: Props) {
     <Modal open={p.open} onClose={p.onClose} title="Nuevo turno" wide
       footer={
         <div className="flex items-center gap-3">
-          <div className="flex-1 text-sm text-volt-muted">{svc.length > 0 && <>{unitSvc ? qtyLabel(q, unitSvc.unit_label) : fmtDuration(totalMin)} · <b className="text-volt-white">{ars(totalPrice)}</b></>}</div>
+          <div className="flex-1 text-sm text-volt-muted">{svc.length > 0 && <>{units.length ? units.map((u) => qtyLabel(qOf(u), u.unit_label)).join(' + ') : fmtDuration(totalMin)} · <b className="text-volt-white">{ars(totalPrice)}</b></>}</div>
           <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? <Spinner /> : 'Agendar turno'}</button>
         </div>
       }>
@@ -185,14 +185,14 @@ export default function NewAppointment(p: Props) {
             })}
             {activeServices.length === 0 && <p className="text-sm text-volt-muted">Cargá servicios primero.</p>}
           </div>
-          {unitSvc && (
-            <div className="mt-3 flex items-center gap-3">
-              <span className="text-sm text-volt-muted">Cantidad ({unitSvc.unit_label})</span>
-              <input className="input w-24" inputMode="numeric" value={qty}
-                onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setQty(Math.min(unitSvc.max_qty, Math.max(1, n || 1))) }} />
-              <span className="text-xs text-volt-muted">máx. {unitSvc.max_qty}</span>
+          {units.map((u) => (
+            <div key={u.id} className="mt-3 flex items-center gap-3">
+              <span className="min-w-0 flex-1 truncate text-sm text-volt-muted">{u.name} ({u.unit_label})</span>
+              <input className="input w-24" inputMode="numeric" value={qOf(u)}
+                onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setQty({ ...qty, [u.id]: Math.min(u.max_qty, Math.max(1, n || 1)) }) }} />
+              <span className="text-xs text-volt-muted">máx. {u.max_qty}</span>
             </div>
-          )}
+          ))}
           {groupSvc && <p className="mt-2 text-xs text-volt-muted">Clase grupal: hasta {groupSvc.capacity} personas por horario.</p>}
         </section>
 

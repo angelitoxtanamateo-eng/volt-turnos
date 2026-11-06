@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useBusiness } from '../context/BusinessContext'
+import { termsFor } from '../lib/types'
 import { Logo } from './ui'
 import BookingToasts from './BookingToasts'
 import InstallApp from './InstallApp'
@@ -33,6 +34,8 @@ export default function PanelLayout() {
   const navigate = useNavigate()
   if (!current) return null
   const b = current.business
+  const tr = termsFor(b.category)
+  const navLabel = (n: NavItem) => (n.to === '/panel/servicios' ? tr.servicesNav : n.to === '/panel/profesionales' ? tr.prosNav : n.label)
 
   const sidebar = (
     <div className="flex h-full flex-col">
@@ -76,7 +79,7 @@ export default function PanelLayout() {
         {NAV.filter((n) => !n.manage || can('manage')).map((n) =>
           n.soon ? (
             <div key={n.to} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-volt-muted/50 cursor-not-allowed">
-              {n.icon}<span className="flex-1">{n.label}</span>
+              {n.icon}<span className="flex-1">{navLabel(n)}</span>
               <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase">Pronto</span>
             </div>
           ) : (
@@ -91,7 +94,7 @@ export default function PanelLayout() {
                 }`
               }
             >
-              {n.icon}{n.label}
+              {n.icon}{navLabel(n)}
             </NavLink>
           ),
         )}

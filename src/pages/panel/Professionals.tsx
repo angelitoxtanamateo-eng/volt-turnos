@@ -5,7 +5,7 @@ import { useBusiness } from '../../context/BusinessContext'
 import { supabase, errorMessage } from '../../lib/supabase'
 import { Alert, Empty, Field, PageHeader, Spinner } from '../../components/ui'
 import Modal from '../../components/Modal'
-import type { Professional, Service, WorkingHour } from '../../lib/types'
+import { termsFor, type Professional, type Service, type WorkingHour } from '../../lib/types'
 import { WEEKDAYS, WEEKDAYS_SHORT, hhmm } from '../../lib/time'
 
 interface Draft {
@@ -126,8 +126,8 @@ export default function Professionals() {
   return (
     <div>
       <PageHeader
-        title="Profesionales"
-        subtitle="Quién atiende, qué servicios hace y en qué horarios"
+        title={termsFor(current?.business.category).prosNav}
+        subtitle={termsFor(current?.business.category).prosSub}
         action={
           <div className="flex items-center gap-2">
             {max !== null && <span className="chip bg-white/5 text-volt-muted">{activeCount}/{max} activos</span>}

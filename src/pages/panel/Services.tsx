@@ -4,11 +4,11 @@ import { useBusiness } from '../../context/BusinessContext'
 import { supabase, errorMessage } from '../../lib/supabase'
 import { Alert, Empty, Field, PageHeader, Spinner } from '../../components/ui'
 import Modal from '../../components/Modal'
-import { priceLabel, type Service } from '../../lib/types'
+import { kindsFor, priceLabel, termsFor, type Service, type ServiceKind } from '../../lib/types'
 import { fmtDuration } from '../../lib/time'
 
 const DURATIONS = [15, 20, 30, 40, 45, 60, 75, 90, 120, 150, 180, 240]
-type Kind = 'turno' | 'clase' | 'unidad'
+type Kind = ServiceKind
 type Form = {
   id?: string; name: string; description: string; duration_min: number; price_ars: string; is_active: boolean
   kind: Kind; capacity: string; unit_label: string; max_qty: string
@@ -29,6 +29,11 @@ const toForm = (s: Service): Form => ({
 export default function Services() {
   const { current } = useBusiness()
   const b = current!.business
+  const tr = termsFor(b.category)
+  const allowed = kindsFor(b.category)
+  const isFood = b.category === 'gastronomia'
+  const fresh = (): Form => ({ ...EMPTY, kind: allowed[0], duration_min: allowed[0] === 'unidad' ? 30 : EMPTY.duration_min, capacity: allowed[0] === 'unidad' ? '5' : EMPTY.capacity })
+  const one = isFood ? 'producto' : 'servicio'
   const [list, setList] = useState<Service[] | null>(null)
   const [form, setForm] = useState<Form | null>(null)
   const [error, setError] = useState('')
@@ -82,18 +87,18 @@ export default function Services() {
   return (
     <div>
       <PageHeader
-        title="Servicios"
-        subtitle="Lo que tus clientes pueden reservar"
-        action={<button className="btn-primary" onClick={() => { setError(''); setForm(EMPTY) }}><Plus className="h-4 w-4" /> Nuevo servicio</button>}
+        title={tr.servicesNav}
+        subtitle={tr.servicesSub}
+        action={<button className="btn-primary" onClick={() => { setError(''); setForm(fresh()) }}><Plus className="h-4 w-4" /> Nuevo {one}</button>}
       />
       {error && !form && <div className="mb-4"><Alert>{error}</Alert></div>}
 
       {!list ? (
         <div className="grid place-items-center py-10"><Spinner className="text-volt-violet" /></div>
       ) : list.length === 0 ? (
-        <Empty icon={<Scissors className="h-6 w-6" />} title="Todavía no cargaste servicios"
+        <Empty icon={<Scissors className="h-6 w-6" />} title={`Todavía no cargaste ${isFood ? 'productos' : 'servicios'}`}
           text="Ej: Corte de pelo, 30 min, $8.000. Después asignalos a cada profesional."
-          action={<button className="btn-primary" onClick={() => setForm(EMPTY)}><Plus className="h-4 w-4" /> Cargar el primero</button>} />
+          action={<button className="btn-primary" onClick={() => setForm(fresh())}><Plus className="h-4 w-4" /> Cargar el primero</button>} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((s) => (
@@ -126,25 +131,31 @@ export default function Services() {
         </div>
       )}
 
-      <Modal open={!!form} onClose={() => setForm(null)} title={form?.id ? 'Editar servicio' : 'Nuevo servicio'}
+      <Modal open={!!form} onClose={() => setForm(null)} title={form?.id ? `Editar ${one}` : `Nuevo ${one}`}
         footer={<button form="svc-form" className="btn-primary w-full" disabled={busy}>{busy ? <Spinner /> : 'Guardar'}</button>}>
         {form && (
           <form id="svc-form" onSubmit={save} className="space-y-4">
             {error && <Alert>{error}</Alert>}
-            <Field label="Nombre"><input className="input" autoFocus maxLength={80} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Corte de pelo" /></Field>
-            <Field label="Descripción (opcional)"><input className="input" maxLength={300} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Incluye lavado" /></Field>
-            <div>
-              <span className="label">¿Cómo se reserva?</span>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {KINDS.map((k) => (
-                  <button type="button" key={k.v} onClick={() => setForm({ ...form, kind: k.v, duration_min: k.v === 'unidad' && form.kind !== 'unidad' ? 15 : form.duration_min })}
-                    className={`rounded-xl border px-3 py-2.5 text-left transition ${form.kind === k.v ? 'border-volt-violet bg-volt-violet/15' : 'border-volt-line hover:border-volt-violet/40'}`}>
-                    <span className="block text-sm font-semibold">{k.title}</span>
-                    <span className="block text-xs text-volt-muted">{k.text}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <Field label="Nombre"><input className="input" autoFocus maxLength={80} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={isFood ? 'Empanadas' : b.category === 'gimnasio' ? 'Funcional' : 'Corte de pelo'} /></Field>
+            <Field label="Descripción (opcional)"><input className="input" maxLength={300} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={isFood ? 'Carne, pollo o jamón y queso' : b.category === 'gimnasio' ? 'Traé toalla y agua' : 'Incluye lavado'} /></Field>
+            {(() => {
+              const opts = KINDS.filter((k) => allowed.includes(k.v) || k.v === form.kind)
+              if (opts.length < 2) return null
+              return (
+                <div>
+                  <span className="label">¿Cómo se reserva?</span>
+                  <div className={`grid gap-2 ${opts.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+                    {opts.map((k) => (
+                      <button type="button" key={k.v} onClick={() => setForm({ ...form, kind: k.v, duration_min: k.v === 'unidad' && form.kind !== 'unidad' ? 30 : form.duration_min })}
+                        className={`rounded-xl border px-3 py-2.5 text-left transition ${form.kind === k.v ? 'border-volt-violet bg-volt-violet/15' : 'border-volt-line hover:border-volt-violet/40'}`}>
+                        <span className="block text-sm font-semibold">{k.title}</span>
+                        <span className="block text-xs text-volt-muted">{k.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
             {form.kind === 'clase' && (
               <Field label="Cupos por clase" hint="Cuántas personas se pueden anotar en el mismo horario">
                 <input className="input max-w-[10rem]" inputMode="numeric" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value.replace(/\D/g, '') })} placeholder="15" />
@@ -172,7 +183,7 @@ export default function Services() {
               </div>
             )}
             <div>
-              <span className="label">{form.kind === 'unidad' ? 'Tiempo de entrega/retiro en la agenda' : form.kind === 'clase' ? 'Duración de la clase' : 'Duración'}</span>
+              <span className="label">{form.kind === 'unidad' ? 'Franja de retiro o entrega (cada cuánto)' : form.kind === 'clase' ? 'Duración de la clase' : 'Duración'}</span>
               <div className="flex flex-wrap gap-2">
                 {DURATIONS.map((d) => (
                   <button type="button" key={d} onClick={() => setForm({ ...form, duration_min: d })}

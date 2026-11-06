@@ -26,21 +26,38 @@ export const CATEGORIES: { value: Category; label: string }[] = [
 /** Palabras que cambian según el rubro (turno / clase / pedido) */
 export interface Terms {
   noun: string; nounPl: string; pick: string; pickHint: string; confirmed: string; who: string; whenTitle: string; staff: string; staffPl: string
+  /** Nombres de las secciones del panel */
+  servicesNav: string; servicesSub: string; prosNav: string; prosSub: string
 }
 const T_TURNO: Terms = {
   noun: 'turno', nounPl: 'turnos', pick: '¿Qué te querés hacer?', pickHint: 'Podés elegir más de uno.',
   confirmed: '¡Turno confirmado!', who: '¿Con quién?', whenTitle: 'Elegí día y horario', staff: 'profesional', staffPl: 'profesionales',
+  servicesNav: 'Servicios', servicesSub: 'Lo que tus clientes pueden reservar',
+  prosNav: 'Profesionales', prosSub: 'Quién atiende, qué servicios hace y en qué horarios',
 }
 export function termsFor(c: Category | string | undefined): Terms {
   if (c === 'gimnasio' || c === 'clases') return {
     ...T_TURNO, noun: 'reserva', nounPl: 'reservas', pick: '¿Qué querés reservar?', pickHint: 'Elegí la clase o actividad.',
     confirmed: '¡Lugar reservado!', who: '¿Con quién?', staff: 'profe', staffPl: 'profes',
+    servicesNav: 'Clases y servicios', servicesSub: 'Clases con cupos y turnos individuales',
+    prosNav: 'Profes', prosSub: 'Quién da cada clase y en qué horarios',
   }
   if (c === 'gastronomia') return {
     ...T_TURNO, noun: 'pedido', nounPl: 'pedidos', pick: '¿Qué querés pedir?', pickHint: 'Elegí el producto y la cantidad.',
     confirmed: '¡Pedido confirmado!', who: '¿Dónde lo retirás?', whenTitle: '¿Para cuándo lo querés?', staff: 'sucursal', staffPl: 'sucursales',
+    servicesNav: 'Productos', servicesSub: 'Lo que tus clientes pueden pedir, con precio por unidad',
+    prosNav: 'Retiro y horarios', prosSub: 'Dónde se retiran los pedidos y en qué horarios',
   }
   return T_TURNO
+}
+
+/** Cómo se reserva cada servicio, según el rubro */
+export type ServiceKind = 'turno' | 'clase' | 'unidad'
+export function kindsFor(c: Category | string | undefined): ServiceKind[] {
+  if (c === 'gastronomia') return ['unidad']
+  if (c === 'gimnasio' || c === 'clases') return ['clase', 'turno']
+  if (c === 'otro') return ['turno', 'clase', 'unidad']
+  return ['turno']
 }
 
 export type Template = 'barberia' | 'peluqueria' | 'nails' | 'estetica' | 'unisex' | 'gym' | 'food'

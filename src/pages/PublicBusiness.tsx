@@ -18,7 +18,8 @@ interface Biz {
   max_days_ahead: number; cancel_limit_hours: number; accepting: boolean; gallery?: string[]; category?: string
 }
 interface Svc { id: string; name: string; description: string | null; duration_min: number; price_ars: number; capacity?: number; unit_label?: string | null; max_qty?: number }
-const isSpecial = (s: Svc) => (s.capacity ?? 1) > 1 || !!s.unit_label
+const isUnit = (s: Svc) => !!s.unit_label
+const isClass = (s: Svc) => !s.unit_label && (s.capacity ?? 1) > 1
 interface Pro { id: string; name: string; specialty: string | null; photo_url: string | null; service_ids: string[] }
 interface Catalog { business: Biz; services: Svc[]; professionals: Pro[] }
 interface Booking { token: string; starts_at: string; ends_at: string; total_price: number; professional: { name: string }; services: { name: string; quantity?: number; unit_label?: string | null; position?: number }[] }
@@ -31,7 +32,7 @@ export default function PublicBusiness() {
   const [cat, setCat] = useState<Catalog | null | undefined>(undefined)
   const [step, setStep] = useState<Step>('servicios')
   const [svc, setSvc] = useState<string[]>([])
-  const [qty, setQty] = useState(1)
+  const [qty, setQty] = useState<Record<string, number>>({})
   const [pro, setPro] = useState<string | null>(null) // null = cualquiera
   const [date, setDate] = useState('')
   const [slots, setSlots] = useState<Slot[] | null>(null)
@@ -83,19 +84,20 @@ export default function PublicBusiness() {
   const t = makeTheme(biz.primary_color, biz.background_color)
   const chosen = cat.services.filter((s) => svc.includes(s.id))
   const totalMin = chosen.reduce((a, s) => a + s.duration_min, 0)
-  const unitSvc = chosen.length === 1 && chosen[0].unit_label ? chosen[0] : null
-  const q = unitSvc ? qty : 1
-  const totalPrice = chosen.reduce((a, s) => a + Number(s.price_ars), 0) * q
+  const isOrder = chosen.length > 0 && chosen.every(isUnit)
+  const qOf = (s: Svc) => (isUnit(s) ? qty[s.id] ?? 1 : 1)
+  const setQ = (s: Svc, n: number) => setQty({ ...qty, [s.id]: Math.min(s.max_qty ?? 999, Math.max(1, n || 1)) })
+  const totalPrice = chosen.reduce((a, s) => a + Number(s.price_ars) * qOf(s), 0)
+  const orderLabel = chosen.map((s) => qtyLabel(qOf(s), s.unit_label)).join(' + ')
   const tr = termsFor(biz.category)
   const showPro = cat.professionals.length > 1
-  const chosenLabel = chosen.map((s) => (unitSvc ? `${qtyLabel(q, s.unit_label)} · ${s.name}` : s.name)).join(' + ')
+  const chosenLabel = chosen.map((s) => (isUnit(s) ? `${qtyLabel(qOf(s), s.unit_label)} · ${s.name}` : s.name)).join(' + ')
   const bookedLabel = (bk: Booking) => bk.services.map((s) => (s.unit_label ? `${qtyLabel(s.quantity ?? 1, s.unit_label)} · ${s.name}` : s.name)).join(' + ')
   function toggleSvc(s: Svc) {
     const on = svc.includes(s.id)
     if (on) { setSvc(svc.filter((x) => x !== s.id)); return }
-    setQty(1)
-    // Las clases con cupo y los productos por unidad se reservan de a uno
-    if (isSpecial(s) || chosen.some(isSpecial)) setSvc([s.id])
+    // Las clases se reservan solas; los productos se combinan entre sí pero no con turnos
+    if (isClass(s) || chosen.some(isClass) || chosen.some((c) => isUnit(c) !== isUnit(s))) setSvc([s.id])
     else setSvc([...svc, s.id])
   }
   const proName = (id: string | null) => cat.professionals.find((p) => p.id === id)?.name
@@ -128,7 +130,7 @@ export default function PublicBusiness() {
     const chosenSlot = slots?.find((s) => s.t === slot)
     const { data, error } = await supabase.rpc('create_booking', {
       p_slug: slug, p_service_ids: svc, p_professional_id: pro ?? chosenSlot?.p ?? null, p_starts_at: slot,
-      p_name: form.name.trim(), p_phone: form.phone.trim(), p_email: form.email.trim() || null, p_quantity: q,
+      p_name: form.name.trim(), p_phone: form.phone.trim(), p_email: form.email.trim() || null, p_quantities: svc.map((id) => qty[id] ?? 1),
     })
     setBusy(false)
     if (error) {
@@ -175,7 +177,7 @@ export default function PublicBusiness() {
             <button onClick={back} className="grid h-10 w-10 place-items-center rounded-full border" style={cardStyle} aria-label="Volver"><ArrowLeft className="h-4 w-4" /></button>
             <div className="min-w-0 text-sm">
               <div className="truncate font-semibold">{chosenLabel}</div>
-              <div style={{ color: t.muted }}>{unitSvc ? '' : `${fmtDuration(totalMin)} · `}{ars(totalPrice)}{pro && showPro && step !== 'profesional' ? ` · ${proName(pro)}` : ''}</div>
+              <div style={{ color: t.muted }}>{isOrder ? '' : `${fmtDuration(totalMin)} · `}{ars(totalPrice)}{pro && showPro && step !== 'profesional' ? ` · ${proName(pro)}` : ''}</div>
             </div>
           </div>
         )}
@@ -205,7 +207,7 @@ export default function PublicBusiness() {
             ) : (
               <>
                 <h2 className="mt-7 text-lg font-bold">{tr.pick}</h2>
-                <p className="text-sm" style={{ color: t.muted }}>{cat.services.some(isSpecial) ? tr.pickHint : 'Podés elegir más de uno.'}</p>
+                <p className="text-sm" style={{ color: t.muted }}>{cat.services.some(isClass) ? tr.pickHint : cat.services.some(isUnit) ? 'Elegí los productos y la cantidad de cada uno.' : 'Podés elegir más de uno.'}</p>
                 <div className="mt-4 space-y-2.5">
                   {cat.services.map((s) => {
                     const on = svc.includes(s.id)
@@ -231,11 +233,11 @@ export default function PublicBusiness() {
                         <div className="flex items-center justify-between gap-3 border-t px-4 py-3" style={{ borderColor: t.line }}>
                           <span className="text-sm font-semibold">Cantidad</span>
                           <div className="flex items-center gap-2">
-                            <button type="button" aria-label="Menos" onClick={() => setQty(Math.max(1, qty - 1))} className="grid h-10 w-10 place-items-center rounded-full border" style={{ borderColor: t.line }}><Minus className="h-4 w-4" /></button>
-                            <input inputMode="numeric" aria-label="Cantidad" value={qty}
-                              onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, '')); setQty(Math.min(s.max_qty ?? 999, Math.max(1, n || 1))) }}
+                            <button type="button" aria-label="Menos" onClick={() => setQ(s, qOf(s) - 1)} className="grid h-10 w-10 place-items-center rounded-full border" style={{ borderColor: t.line }}><Minus className="h-4 w-4" /></button>
+                            <input inputMode="numeric" aria-label="Cantidad" value={qOf(s)}
+                              onChange={(e) => setQ(s, Number(e.target.value.replace(/\D/g, '')))}
                               className="w-14 rounded-xl border bg-transparent py-2 text-center text-base font-bold outline-none" style={{ borderColor: t.line }} />
-                            <button type="button" aria-label="Más" onClick={() => setQty(Math.min(s.max_qty ?? 999, qty + 1))} className="grid h-10 w-10 place-items-center rounded-full border" style={{ borderColor: t.line }}><Plus className="h-4 w-4" /></button>
+                            <button type="button" aria-label="Más" onClick={() => setQ(s, qOf(s) + 1)} className="grid h-10 w-10 place-items-center rounded-full border" style={{ borderColor: t.line }}><Plus className="h-4 w-4" /></button>
                           </div>
                         </div>
                       )}
@@ -280,7 +282,7 @@ export default function PublicBusiness() {
               ) : slots.length === 0 ? (
                 <div className="rounded-2xl border p-6 text-center text-sm" style={{ ...cardStyle, color: t.muted }}>No quedan horarios este día. Probá con otro.</div>
               ) : (
-                <SlotGrid slots={slots.map((s) => ({ t: s.t, label: hmInTz(s.t, tz), sub: chosen.some((c) => (c.capacity ?? 1) > 1 && !c.unit_label) && s.l != null ? (s.l === 1 ? 'queda 1' : `quedan ${s.l}`) : undefined }))} value={slot} onChange={setSlot} t={t} />
+                <SlotGrid slots={slots.map((s) => ({ t: s.t, label: hmInTz(s.t, tz), sub: chosen.some(isClass) && s.l != null ? (s.l === 1 ? 'queda 1' : `quedan ${s.l}`) : undefined }))} value={slot} onChange={setSlot} t={t} />
               )}
             </div>
           </>
@@ -342,7 +344,7 @@ export default function PublicBusiness() {
               </Link>
             </div>
             <p className="mt-4 text-xs" style={{ color: t.muted }}>Guardá este link para gestionar tu {tr.noun}. Podés cambiarlo o cancelarlo hasta {biz.cancel_limit_hours ? `${biz.cancel_limit_hours} h antes` : 'la hora reservada'}.</p>
-            <button className="mt-6 text-sm font-semibold underline" onClick={() => { setStep('servicios'); setSvc([]); setQty(1); setPro(null); setSlot(null); setBooking(null) }}>{tr.noun === 'pedido' ? 'Hacer otro pedido' : tr.noun === 'turno' ? 'Sacar otro turno' : 'Hacer otra reserva'}</button>
+            <button className="mt-6 text-sm font-semibold underline" onClick={() => { setStep('servicios'); setSvc([]); setQty({}); setPro(null); setSlot(null); setBooking(null) }}>{tr.noun === 'pedido' ? 'Hacer otro pedido' : tr.noun === 'turno' ? 'Sacar otro turno' : 'Hacer otra reserva'}</button>
           </div>
         )}
 
@@ -367,7 +369,7 @@ export default function PublicBusiness() {
           <div className="mx-auto flex max-w-xl items-center gap-3">
             <div className="min-w-0 flex-1 text-sm">
               {step === 'horario' && slot ? <><b>{hmInTz(slot, tz)} hs</b><div className="capitalize" style={{ color: t.muted }}>{longDate(date)}</div></>
-                : <><b>{ars(totalPrice)}</b><div style={{ color: t.muted }}>{unitSvc ? qtyLabel(q, unitSvc.unit_label) : fmtDuration(totalMin)}</div></>}
+                : <><b>{ars(totalPrice)}</b><div style={{ color: t.muted }}>{isOrder ? orderLabel : fmtDuration(totalMin)}</div></>}
             </div>
             {step === 'servicios' && <button onClick={next} className="rounded-2xl px-6 py-3.5 font-bold" style={primaryBtn}>Continuar</button>}
             {step === 'horario' && <button onClick={() => { setError(''); setStep('datos') }} className="rounded-2xl px-6 py-3.5 font-bold" style={primaryBtn}>Continuar</button>}
