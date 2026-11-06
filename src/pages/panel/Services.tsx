@@ -4,7 +4,7 @@ import { useBusiness } from '../../context/BusinessContext'
 import { supabase, errorMessage } from '../../lib/supabase'
 import { Alert, Empty, Field, PageHeader, Spinner } from '../../components/ui'
 import Modal from '../../components/Modal'
-import { kindsFor, priceLabel, termsFor, type Service, type ServiceKind } from '../../lib/types'
+import { kindsFor, modulesOf, priceLabel, termsFor, type Service, type ServiceKind } from '../../lib/types'
 import { fmtDuration } from '../../lib/time'
 
 const DURATIONS = [15, 20, 30, 40, 45, 60, 75, 90, 120, 150, 180, 240]
@@ -30,7 +30,8 @@ export default function Services() {
   const { current } = useBusiness()
   const b = current!.business
   const tr = termsFor(b.category)
-  const allowed = kindsFor(b.category)
+  const allowed = kindsFor(modulesOf(b.category, b.modules))
+  const kindOf = (s: Service): ServiceKind => (s.unit_label ? 'unidad' : s.capacity > 1 ? 'clase' : 'turno')
   const isFood = b.category === 'gastronomia'
   const fresh = (): Form => ({ ...EMPTY, kind: allowed[0], duration_min: allowed[0] === 'unidad' ? 30 : EMPTY.duration_min, capacity: allowed[0] === 'unidad' ? '5' : EMPTY.capacity })
   const one = isFood ? 'producto' : 'servicio'
@@ -107,6 +108,7 @@ export default function Services() {
                 <div className="min-w-0">
                   <div className="font-semibold">{s.name}</div>
                   {s.description && <div className="mt-0.5 line-clamp-2 text-xs text-volt-muted">{s.description}</div>}
+                  {!allowed.includes(kindOf(s)) && <div className="mt-1 text-xs font-medium text-volt-amber">No se muestra: su módulo está apagado en Mi negocio</div>}
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button className="rounded-lg p-2 text-volt-muted hover:bg-white/5 hover:text-volt-white" title={s.is_active ? 'Ocultar' : 'Mostrar'} onClick={() => toggle(s)}>

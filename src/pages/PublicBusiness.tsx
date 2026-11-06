@@ -89,7 +89,9 @@ export default function PublicBusiness() {
   const setQ = (s: Svc, n: number) => setQty({ ...qty, [s.id]: Math.min(s.max_qty ?? 999, Math.max(1, n || 1)) })
   const totalPrice = chosen.reduce((a, s) => a + Number(s.price_ars) * qOf(s), 0)
   const orderLabel = chosen.map((s) => qtyLabel(qOf(s), s.unit_label)).join(' + ')
-  const tr = termsFor(biz.category)
+  const trBase = termsFor(biz.category)
+  // Los textos siguen a lo que eligió: pedido, clase o turno (sirve aunque el rubro sea otro)
+  const tr = termsFor(isOrder ? 'gastronomia' : chosen.some(isClass) ? 'gimnasio' : biz.category)
   const showPro = cat.professionals.length > 1
   const chosenLabel = chosen.map((s) => (isUnit(s) ? `${qtyLabel(qOf(s), s.unit_label)} · ${s.name}` : s.name)).join(' + ')
   const bookedLabel = (bk: Booking) => bk.services.map((s) => (s.unit_label ? `${qtyLabel(s.quantity ?? 1, s.unit_label)} · ${s.name}` : s.name)).join(' + ')
@@ -206,8 +208,8 @@ export default function PublicBusiness() {
               <div className="mt-6 rounded-2xl border p-5 text-center text-sm" style={{ ...cardStyle, color: t.muted }}>Pronto vas a poder reservar acá.</div>
             ) : (
               <>
-                <h2 className="mt-7 text-lg font-bold">{tr.pick}</h2>
-                <p className="text-sm" style={{ color: t.muted }}>{cat.services.some(isClass) ? tr.pickHint : cat.services.some(isUnit) ? 'Elegí los productos y la cantidad de cada uno.' : 'Podés elegir más de uno.'}</p>
+                <h2 className="mt-7 text-lg font-bold">{trBase.pick}</h2>
+                <p className="text-sm" style={{ color: t.muted }}>{cat.services.some(isClass) ? trBase.pickHint : cat.services.some(isUnit) ? 'Elegí los productos y la cantidad de cada uno.' : 'Podés elegir más de uno.'}</p>
                 <div className="mt-4 space-y-2.5">
                   {cat.services.map((s) => {
                     const on = svc.includes(s.id)
@@ -293,7 +295,7 @@ export default function PublicBusiness() {
           <form id="datos" onSubmit={confirm}>
             <div className="mt-6 rounded-2xl border p-4" style={cardStyle}>
               <div className="flex items-center gap-2 text-sm font-semibold"><CalendarCheck className="h-4 w-4" style={{ color: t.primary }} /> <span className="capitalize">{longDate(ymdInTz(slot, tz))}</span> · {hmInTz(slot, tz)} hs</div>
-              {showPro && <div className="mt-1 text-sm" style={{ color: t.muted }}>{biz.category === 'gastronomia' ? 'Retiro en' : 'con'} {proName(pro ?? slots?.find((s) => s.t === slot)?.p ?? null)}</div>}
+              {showPro && <div className="mt-1 text-sm" style={{ color: t.muted }}>{isOrder ? 'Retiro en' : 'con'} {proName(pro ?? slots?.find((s) => s.t === slot)?.p ?? null)}</div>}
             </div>
             <h2 className="mt-6 text-lg font-bold">Tus datos</h2>
             <div className="mt-3 space-y-3">
@@ -320,11 +322,11 @@ export default function PublicBusiness() {
           <div className="pt-10 text-center">
             <div className="mx-auto grid h-20 w-20 place-items-center rounded-full animate-fade-up" style={primaryBtn}><Check className="h-10 w-10" strokeWidth={3} /></div>
             <h1 className="mt-5 text-2xl font-extrabold">{tr.confirmed}</h1>
-            <p className="mt-1" style={{ color: t.muted }}>{biz.category === 'gastronomia' ? `Gracias por tu pedido en ${biz.name}` : `Te esperamos en ${biz.name}`}</p>
+            <p className="mt-1" style={{ color: t.muted }}>{isOrder ? `Gracias por tu pedido en ${biz.name}` : `Te esperamos en ${biz.name}`}</p>
             <div className="mt-6 rounded-2xl border p-5 text-left" style={cardStyle}>
               <div className="text-lg font-bold capitalize">{longDate(ymdInTz(booking.starts_at, tz))}</div>
               <div className="text-3xl font-extrabold" style={{ color: t.primary }}>{hmInTz(booking.starts_at, tz)} hs</div>
-              <div className="mt-3 text-sm">{bookedLabel(booking)}{showPro && <> {biz.category === 'gastronomia' ? '· retiro en' : 'con'} <b>{booking.professional.name}</b></>}</div>
+              <div className="mt-3 text-sm">{bookedLabel(booking)}{showPro && <> {isOrder ? '· retiro en' : 'con'} <b>{booking.professional.name}</b></>}</div>
               <div className="mt-1 text-sm" style={{ color: t.muted }}>Total estimado: {ars(Number(booking.total_price))}</div>
               {address && <div className="mt-1 flex items-center gap-1.5 text-sm" style={{ color: t.muted }}><MapPin className="h-3.5 w-3.5" /> {address}</div>}
             </div>

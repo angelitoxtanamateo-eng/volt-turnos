@@ -8,7 +8,8 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 export type Category =
   | 'peluqueria' | 'barberia' | 'unas' | 'estetica' | 'spa'
-  | 'gimnasio' | 'gastronomia' | 'consultorio' | 'oficios' | 'clases' | 'otro'
+  | 'gimnasio' | 'entrenador' | 'gastronomia' | 'consultorio' | 'oficios' | 'tecnico' | 'hogar'
+  | 'clases' | 'academia' | 'alquiler' | 'veterinaria' | 'otro'
 export const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'peluqueria', label: 'Peluquería' },
   { value: 'barberia', label: 'Barbería' },
@@ -16,10 +17,16 @@ export const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'estetica', label: 'Estética' },
   { value: 'spa', label: 'Spa / Masajes' },
   { value: 'gimnasio', label: 'Gimnasio / Funcional' },
+  { value: 'entrenador', label: 'Entrenador personal' },
   { value: 'gastronomia', label: 'Comidas / Catering' },
-  { value: 'consultorio', label: 'Consultorio' },
+  { value: 'consultorio', label: 'Consultorio / Profesional' },
+  { value: 'veterinaria', label: 'Veterinaria' },
+  { value: 'clases', label: 'Clases particulares' },
+  { value: 'academia', label: 'Academia / Talleres' },
+  { value: 'tecnico', label: 'Servicio técnico / Instalador' },
   { value: 'oficios', label: 'Oficios' },
-  { value: 'clases', label: 'Clases / Talleres' },
+  { value: 'hogar', label: 'Servicios para el hogar' },
+  { value: 'alquiler', label: 'Alquiler de espacios o equipos' },
   { value: 'otro', label: 'Otro' },
 ]
 
@@ -36,7 +43,7 @@ const T_TURNO: Terms = {
   prosNav: 'Profesionales', prosSub: 'Quién atiende, qué servicios hace y en qué horarios',
 }
 export function termsFor(c: Category | string | undefined): Terms {
-  if (c === 'gimnasio' || c === 'clases') return {
+  if (c === 'gimnasio' || c === 'clases' || c === 'entrenador' || c === 'academia') return {
     ...T_TURNO, noun: 'reserva', nounPl: 'reservas', pick: '¿Qué querés reservar?', pickHint: 'Elegí la clase o actividad.',
     confirmed: '¡Lugar reservado!', who: '¿Con quién?', staff: 'profe', staffPl: 'profes',
     servicesNav: 'Clases y servicios', servicesSub: 'Clases con cupos y turnos individuales',
@@ -51,13 +58,26 @@ export function termsFor(c: Category | string | undefined): Terms {
   return T_TURNO
 }
 
-/** Cómo se reserva cada servicio, según el rubro */
+/** Formas de reservar (módulos). El rubro solo sugiere cuáles vienen activadas. */
 export type ServiceKind = 'turno' | 'clase' | 'unidad'
-export function kindsFor(c: Category | string | undefined): ServiceKind[] {
-  if (c === 'gastronomia') return ['unidad']
-  if (c === 'gimnasio' || c === 'clases') return ['clase', 'turno']
-  if (c === 'otro') return ['turno', 'clase', 'unidad']
-  return ['turno']
+export type ModuleKey = 'turnos' | 'clases' | 'pedidos'
+export type Modules = Record<ModuleKey, boolean>
+export const MODULE_INFO: { key: ModuleKey; kind: ServiceKind; title: string; text: string }[] = [
+  { key: 'turnos', kind: 'turno', title: 'Turnos', text: 'Un cliente por horario: cortes, consultas, visitas, reparaciones.' },
+  { key: 'clases', kind: 'clase', title: 'Clases con cupos', text: 'Varias personas en el mismo horario: funcional, yoga, talleres, visitas guiadas.' },
+  { key: 'pedidos', kind: 'unidad', title: 'Pedidos por unidad', text: 'El cliente elige productos y cantidades: empanadas, viandas, tortas.' },
+]
+/** Igual que public.business_modules() en la base */
+export function modulesOf(category: Category | string | undefined, saved?: Partial<Modules> | null): Modules {
+  const c = category ?? 'otro'
+  return {
+    turnos: saved?.turnos ?? c !== 'gastronomia',
+    clases: saved?.clases ?? ['gimnasio', 'entrenador', 'clases', 'academia', 'otro'].includes(c),
+    pedidos: saved?.pedidos ?? ['gastronomia', 'otro'].includes(c),
+  }
+}
+export function kindsFor(m: Modules): ServiceKind[] {
+  return MODULE_INFO.filter((x) => m[x.key]).map((x) => x.kind)
 }
 
 export type Template = 'barberia' | 'peluqueria' | 'nails' | 'estetica' | 'unisex' | 'gym' | 'food'
@@ -72,7 +92,8 @@ export const TEMPLATES: Record<Template, { label: string; primary: string; secon
 }
 export const CATEGORY_TEMPLATE: Record<Category, Template> = {
   peluqueria: 'peluqueria', barberia: 'barberia', unas: 'nails', estetica: 'estetica', spa: 'estetica',
-  gimnasio: 'gym', gastronomia: 'food', consultorio: 'estetica', oficios: 'unisex', clases: 'unisex', otro: 'unisex',
+  gimnasio: 'gym', entrenador: 'gym', gastronomia: 'food', consultorio: 'estetica', veterinaria: 'unisex', oficios: 'unisex',
+  tecnico: 'unisex', hogar: 'unisex', clases: 'unisex', academia: 'unisex', alquiler: 'unisex', otro: 'unisex',
 }
 
 export interface Business {
@@ -103,6 +124,7 @@ export interface Business {
   cancel_limit_hours: number
   booking_enabled: boolean
   gallery: string[]
+  modules?: Partial<Modules> | null
 }
 
 export interface Membership {

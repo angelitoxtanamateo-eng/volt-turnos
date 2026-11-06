@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useBusiness } from '../../context/BusinessContext'
 import { supabase, errorMessage } from '../../lib/supabase'
 import { Alert, Field, PageHeader, Spinner } from '../../components/ui'
-import { CATEGORIES, type Category } from '../../lib/types'
+import { CATEGORIES, MODULE_INFO, modulesOf, type Category, type Modules } from '../../lib/types'
 import { publicUrl, waNumber } from '../../lib/share'
 
 export default function BusinessSettings() {
@@ -109,6 +109,7 @@ export default function BusinessSettings() {
               {published ? 'Despublicar' : 'Publicar página'}
             </button>
           </div>
+          <ModulesCard />
           <BookingRules />
           <div className="card p-5">
             <div className="text-sm text-volt-muted">Tu dirección</div>
@@ -171,6 +172,45 @@ function BookingRules() {
         </select>
       </Field>
       <button className="btn-primary w-full" onClick={save} disabled={busy}>{busy ? <Spinner /> : 'Guardar reglas'}</button>
+    </div>
+  )
+}
+
+/** Formas de reservar que usa el negocio (módulos). El rubro solo sugiere las iniciales. */
+function ModulesCard() {
+  const { refresh } = useAuth()
+  const { current } = useBusiness()
+  const b = current!.business
+  const [m, setM] = useState<Modules>(() => modulesOf(b.category, b.modules))
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { setM(modulesOf(b.category, b.modules)) }, [b.category, b.modules])
+
+  async function save() {
+    setMsg(null)
+    if (!m.turnos && !m.clases && !m.pedidos) return setMsg({ kind: 'error', text: 'Dejá al menos una forma de reservar activada' })
+    setBusy(true)
+    const { error } = await supabase.from('businesses').update({ modules: m }).eq('id', b.id)
+    setBusy(false)
+    if (error) return setMsg({ kind: 'error', text: errorMessage(error) })
+    await refresh()
+    setMsg({ kind: 'success', text: 'Listo. Tu página ya muestra solo lo activado.' })
+  }
+
+  return (
+    <div className="card space-y-3 p-5">
+      <div>
+        <div className="font-semibold">Qué pueden reservar tus clientes</div>
+        <p className="mt-0.5 text-xs text-volt-muted">Viene sugerido según tu rubro. Activá lo que uses.</p>
+      </div>
+      {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
+      {MODULE_INFO.map((x) => (
+        <label key={x.key} className="flex cursor-pointer items-start gap-3 rounded-xl border border-volt-line p-3 text-sm hover:border-volt-violet/40">
+          <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-volt-violet" checked={m[x.key]} onChange={(e) => setM({ ...m, [x.key]: e.target.checked })} />
+          <span><b className="block">{x.title}</b><span className="text-xs text-volt-muted">{x.text}</span></span>
+        </label>
+      ))}
+      <button className="btn-primary w-full" onClick={save} disabled={busy}>{busy ? <Spinner /> : 'Guardar'}</button>
     </div>
   )
 }
